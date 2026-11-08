@@ -47,3 +47,4 @@ VALUES
 INSERT INTO egreso (fecha_egreso, motivo_egreso, condicion_salida, destino_post_egreso, sello_hash, numero_visita)
 VALUES 
     ('2026-11-07 15:30:00', 'Mejoria clinica', 'ESTABLE', 'DOMICILIO', 'a6b4f7e2d9c1048e91f03bb748a12e847c10d32f5891ac37de41b98a02c3d561', 'V-S1-0150');
+

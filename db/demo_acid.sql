@@ -38,3 +38,4 @@ SELECT numero_visita, documento_id FROM atencion WHERE numero_visita = 'V-TEST-F
 \echo '====================================================='
 \echo 'CONCLUSION: Atomicidad demostrada. No queda ningún registro parcial.'
 \echo '====================================================='
+

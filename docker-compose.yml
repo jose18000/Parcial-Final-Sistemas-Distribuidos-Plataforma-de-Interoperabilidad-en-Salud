@@ -84,6 +84,40 @@ services:
       start_period: 25s
     restart: unless-stopped
 
+  # ── Health Service Bus (HSB :8001) ────────────────────────
+  hsb:
+    build:
+      context: .
+      dockerfile: hsb/Dockerfile
+    container_name: hsb_bus
+    ports:
+      - "${HSB_PORT:-8001}:8001"
+    environment:
+      - HAPI_FHIR_URL=http://hapi-fhir:8080/fhir
+      - DB_HOST_SEDE1=pg_sede1
+      - DB_PORT_SEDE1=5432
+      - DB_NAME_SEDE1=${DB_NAME_SEDE1:-clinica_sincelejo}
+      - DB_HOST_SEDE2=pg_sede2
+      - DB_PORT_SEDE2=5432
+      - DB_NAME_SEDE2=${DB_NAME_SEDE2:-clinica_cartagena}
+      - DB_HOST_SEDE3=pg_sede3
+      - DB_PORT_SEDE3=5432
+      - DB_NAME_SEDE3=${DB_NAME_SEDE3:-clinica_corozal}
+      - POSTGRES_USER=${POSTGRES_USER:-clinica_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-clinica_pass_2026}
+      - HSB_MAX_RETRIES=4
+      - HSB_RETRY_BASE_SECONDS=1.0
+    depends_on:
+      hapi-fhir:
+        condition: service_started
+      pg_sede1:
+        condition: service_healthy
+      pg_sede2:
+        condition: service_healthy
+      pg_sede3:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pg_data_sede1:
   pg_data_sede2:

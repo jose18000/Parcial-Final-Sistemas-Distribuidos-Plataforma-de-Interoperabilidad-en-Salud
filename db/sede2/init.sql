@@ -46,3 +46,4 @@ VALUES
 INSERT INTO egreso (fecha_egreso, motivo_egreso, condicion_salida, destino_post_egreso, sello_hash, numero_visita)
 VALUES 
     ('2026-08-20 15:00:00', 'Control ambulatorio cumplido', 'ESTABLE', 'DOMICILIO', '7c89f1e03b4d2a9e51c82f0d9b4a1c6e83d2f5a7b1e9c0d4f6a8b2c4e6d8f0a2', 'V-S2-0080');
+

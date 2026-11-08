@@ -52,3 +52,4 @@ INSERT INTO egreso (fecha_egreso, motivo_egreso, condicion_salida, destino_post_
 VALUES 
     ('2026-05-10 21:00:00', 'Hidratacion oral exitosa', 'ESTABLE', 'DOMICILIO', '9f8e7d6c5b4a3928170e1f2d3c4b5a6978e0f1d2c3b4a59687e0f1d2c3b4a596', 'V-S3-0045'),
     ('2026-11-07 10:00:00', 'Plan de rehidratacion formulado', 'ESTABLE', 'DOMICILIO', '3b4c5d6e7f8a90123456789abcdef0123456789abcdef0123456789abcdef01', 'V-S3-0050');
+

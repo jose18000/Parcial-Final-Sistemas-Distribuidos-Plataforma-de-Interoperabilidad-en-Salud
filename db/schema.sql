@@ -124,3 +124,4 @@ CREATE INDEX IF NOT EXISTS idx_diagnostico_visita ON diagnostico(numero_visita);
 CREATE INDEX IF NOT EXISTS idx_tecnologia_visita ON tecnologia_salud(numero_visita);
 CREATE INDEX IF NOT EXISTS idx_mensaje_bus_hash ON mensaje_bus(hash_contenido);
 CREATE INDEX IF NOT EXISTS idx_evento_auditoria_ts ON evento_auditoria(timestamp);
+

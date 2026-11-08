@@ -198,3 +198,4 @@ if __name__ == "__main__":
     print(f"=== Consultando historia unificada para documento: {doc_prueba} ===")
     resultado = consultar_historia_unificada(doc_prueba)
     print(json.dumps(resultado, indent=2, default=str))
+
