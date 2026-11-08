@@ -1,0 +1,85 @@
+# docker-compose.yml — Esqueleto Fase 1
+# Implementación completa: Fase 2 (bases de datos) y Fase 3 (HSB)
+# Ejecutar: docker compose up -d
+
+services:
+
+  # ── Placeholder: se implementa en Fase 2 ──────────────────
+  pg_sede1:
+    image: postgres:16-alpine
+    profiles: ["fase2"]          # solo activo desde Fase 2
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DB_NAME_SEDE1}
+    ports:
+      - "${DB_PORT_SEDE1}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      retries: 5
+
+  pg_sede2:
+    image: postgres:16-alpine
+    profiles: ["fase2"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DB_NAME_SEDE2}
+    ports:
+      - "${DB_PORT_SEDE2}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      retries: 5
+
+  pg_sede3:
+    image: postgres:16-alpine
+    profiles: ["fase2"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DB_NAME_SEDE3}
+    ports:
+      - "${DB_PORT_SEDE3}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      retries: 5
+
+  # ── HAPI FHIR R4 — se activa en Fase 2 ───────────────────
+  hapi-fhir:
+    image: hapiproject/hapi:v7.2.0
+    profiles: ["fase2"]
+    ports:
+      - "8090:8080"
+    environment:
+      hapi.fhir.fhir_version: R4
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/fhir/metadata || exit 1"]
+      interval: 30s
+      retries: 5
+
+  # ── HSB — se implementa en Fase 3 ─────────────────────────
+  hsb:
+    build: ./hsb
+    profiles: ["fase3"]
+    ports:
+      - "8001:8001"
+    depends_on:
+      hapi-fhir:
+        condition: service_healthy
+
+  # ── API Gateway — se implementa en Fase 4 ─────────────────
+  api:
+    build: ./app
+    profiles: ["fase4"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      - pg_sede1
+      - pg_sede2
+      - pg_sede3
+      - hapi-fhir
+      - hsb
+

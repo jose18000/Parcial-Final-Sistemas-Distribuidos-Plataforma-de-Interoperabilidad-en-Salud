@@ -1,0 +1,41 @@
+# Variables de entorno — NUNCA versionar
+.env
+
+# Datos y volúmenes Docker
+volumes/
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# Node
+node_modules/
+.next/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Archivos temporales de prueba
+tmp/
+scratch/
+
