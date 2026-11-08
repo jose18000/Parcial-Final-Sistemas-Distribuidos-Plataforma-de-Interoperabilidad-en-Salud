@@ -166,3 +166,4 @@ COMMIT;
 | Script de consulta unificada distribuida con soporte de tolerancia a fallos | ✅ Completo | `db/consulta_unificada.py` |
 | Script de prueba de atomicidad ACID con rollback demostrado | ✅ Completo | `db/demo_acid.sql` |
 | Justificación CAP, Estado del arte con 8 fuentes y respuesta de autoevaluación | ✅ Completo | Secciones 1, 2 y 6 de este informe |
+

@@ -397,3 +397,4 @@ def construir_bundle_transaccional(
         "type": "transaction",
         "entry": entries
     }
+

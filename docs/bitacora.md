@@ -42,7 +42,19 @@
 
 ## Fase 3 · HSB / Middleware
 
-*(pendiente)*
+| Fecha | Integrante | Actividad | IA / Código abierto |
+|-------|-----------|-----------|---------------------|
+| 2026-11-08 | A — Jose Canchila | Diseño del HSB con FastAPI (`hsb/main.py`), endpoints `/hsb/hl7`, `/hsb/csv`, `/health`, `/metrics`, gestor de cola con reintentos (`hsb/queue_manager.py`) y Dockerfile | Antigravity — estructuración de endpoints y lógica de reintentos |
+| 2026-11-08 | A — Jose Canchila | Integración de HSB en `docker-compose.yml`, recolector de métricas operacionales (`hsb/metrics.py`) y verificación de idempotencia | Antigravity — cálculo de latencias y soporte en deduplicación |
+| 2026-11-08 | B — Sharit Manjarrez | Parsers de HL7 v2 (`hsb/parser_hl7.py`) y CSV legado (`hsb/parser_csv.py`), validador pre-transformación (`hsb/validator.py`) y tabla de terminologías | Antigravity — análisis de segmentos HL7 y expresiones regulares CIE-10/LOINC |
+| 2026-11-08 | B — Sharit Manjarrez | Suite de pruebas de integración (`tests/fase3/test_hsb_integration.py`) con los 4 ejemplos contractuales e informe técnico de Fase 3 | Antigravity — asistencia en casos de prueba con unittest y redacción técnica |
+| 2026-11-08 | A + B | Verificación de reintentos con backoff exponencial, simulación de cola de mensajes muertos y respuesta de autoevaluación | — |
+
+### Uso declarado de IA en Fase 3
+- **Herramienta:** Antigravity (Google DeepMind) vía IDE integrado.
+- **Uso:** Asistencia en la construcción del parser de segmentos HL7 v2 con delimitadores `\r`, mapeador terminológico para CSV, validador de contratos clínicos con reporte de motivos exactos de rechazo y pruebas de integración.
+- **Revisión humana:** Se verificó experimentalmente que los 4 archivos de prueba arrojaran exactamente los resultados previstos por la guía docente sin alterar los ejemplos originales, y que el reenvío respondiera 'duplicado' sin crear registros espurios.
+- **Código abierto:** FastAPI (MIT), Uvicorn (BSD), HTTPX (BSD), HAPI FHIR (Apache 2.0).*
 
 ---
 
