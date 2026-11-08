@@ -31,6 +31,9 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# Guías de referencia docente
+guias/
+
 # Logs
 *.log
 logs/

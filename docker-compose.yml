@@ -1,85 +1,90 @@
-# docker-compose.yml — Esqueleto Fase 1
-# Implementación completa: Fase 2 (bases de datos) y Fase 3 (HSB)
-# Ejecutar: docker compose up -d
+# docker-compose.yml — Plataforma Distribuida de Interoperabilidad Clínica
+# Un solo comando: docker compose up -d
 
 services:
 
-  # ── Placeholder: se implementa en Fase 2 ──────────────────
+  # ── Sede 1: Sincelejo (PostgreSQL :5433) ───────────────────
   pg_sede1:
     image: postgres:16-alpine
-    profiles: ["fase2"]          # solo activo desde Fase 2
+    container_name: pg_sede1
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${DB_NAME_SEDE1}
+      POSTGRES_USER: ${POSTGRES_USER:-clinica_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinica_pass_2026}
+      POSTGRES_DB: ${DB_NAME_SEDE1:-clinica_sincelejo}
     ports:
-      - "${DB_PORT_SEDE1}:5432"
+      - "${DB_PORT_SEDE1:-5433}:5432"
+    volumes:
+      - pg_data_sede1:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+      - ./db/sede1/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clinica_user} -d ${DB_NAME_SEDE1:-clinica_sincelejo}"]
+      interval: 5s
+      timeout: 5s
       retries: 5
+    restart: unless-stopped
 
+  # ── Sede 2: Cartagena (PostgreSQL :5434) ───────────────────
   pg_sede2:
     image: postgres:16-alpine
-    profiles: ["fase2"]
+    container_name: pg_sede2
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${DB_NAME_SEDE2}
+      POSTGRES_USER: ${POSTGRES_USER:-clinica_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinica_pass_2026}
+      POSTGRES_DB: ${DB_NAME_SEDE2:-clinica_cartagena}
     ports:
-      - "${DB_PORT_SEDE2}:5432"
+      - "${DB_PORT_SEDE2:-5434}:5432"
+    volumes:
+      - pg_data_sede2:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+      - ./db/sede2/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clinica_user} -d ${DB_NAME_SEDE2:-clinica_cartagena}"]
+      interval: 5s
+      timeout: 5s
       retries: 5
+    restart: unless-stopped
 
+  # ── Sede 3: Corozal (PostgreSQL :5435) ─────────────────────
   pg_sede3:
     image: postgres:16-alpine
-    profiles: ["fase2"]
+    container_name: pg_sede3
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${DB_NAME_SEDE3}
+      POSTGRES_USER: ${POSTGRES_USER:-clinica_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinica_pass_2026}
+      POSTGRES_DB: ${DB_NAME_SEDE3:-clinica_corozal}
     ports:
-      - "${DB_PORT_SEDE3}:5432"
+      - "${DB_PORT_SEDE3:-5435}:5432"
+    volumes:
+      - pg_data_sede3:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+      - ./db/sede3/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clinica_user} -d ${DB_NAME_SEDE3:-clinica_corozal}"]
+      interval: 5s
+      timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  # ── HAPI FHIR R4 — se activa en Fase 2 ───────────────────
+  # ── Servidor HAPI FHIR R4 (:8090) ─────────────────────────
   hapi-fhir:
     image: hapiproject/hapi:v7.2.0
-    profiles: ["fase2"]
+    container_name: hapi_fhir
     ports:
       - "8090:8080"
     environment:
       hapi.fhir.fhir_version: R4
+      hapi.fhir.server_address: http://localhost:8090/fhir
+      hapi.fhir.validation_enabled: "true"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/fhir/metadata || exit 1"]
-      interval: 30s
-      retries: 5
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 25s
+    restart: unless-stopped
 
-  # ── HSB — se implementa en Fase 3 ─────────────────────────
-  hsb:
-    build: ./hsb
-    profiles: ["fase3"]
-    ports:
-      - "8001:8001"
-    depends_on:
-      hapi-fhir:
-        condition: service_healthy
-
-  # ── API Gateway — se implementa en Fase 4 ─────────────────
-  api:
-    build: ./app
-    profiles: ["fase4"]
-    ports:
-      - "8000:8000"
-    depends_on:
-      - pg_sede1
-      - pg_sede2
-      - pg_sede3
-      - hapi-fhir
-      - hsb
-
+volumes:
+  pg_data_sede1:
+  pg_data_sede2:
+  pg_data_sede3:
