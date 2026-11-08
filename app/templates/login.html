@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acceso Seguro · Plataforma Clínica Distribuida</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --card-bg: #ffffff;
+      --text: #1a2530;
+      --primary: #0056b3;
+      --primary-hover: #003d80;
+      --border: #d0d7de;
+      --focus-ring: #0056b3;
+      --error: #d9383a;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 1rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-top: 0;
+      color: #0d233a;
+      text-align: center;
+    }
+    p.subtitle {
+      color: #555;
+      font-size: 0.9rem;
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      font-size: 0.95rem;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+    input:focus {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+    button.btn-primary {
+      width: 100%;
+      padding: 0.85rem;
+      background-color: var(--primary);
+      color: #ffffff;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 0.5rem;
+    }
+    button.btn-primary:hover, button.btn-primary:focus {
+      background-color: var(--primary-hover);
+      outline: 2px solid var(--focus-ring);
+    }
+    .alert-error {
+      background-color: #ffebe9;
+      color: var(--error);
+      padding: 0.75rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+      border: 1px solid #ffc1c0;
+      font-size: 0.9rem;
+    }
+    .quick-users {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    .quick-users h2 {
+      font-size: 0.9rem;
+      margin: 0 0 0.5rem 0;
+      color: #444;
+    }
+    .pill {
+      display: inline-block;
+      padding: 0.3rem 0.6rem;
+      margin: 0.2rem;
+      background: #e9f2ff;
+      color: var(--primary);
+      border: 1px solid #b8daff;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .pill:hover, .pill:focus {
+      background: #cce2ff;
+    }
+  </style>
+</head>
+<body>
+  <main class="card" role="main">
+    <h1>Acceso Seguro</h1>
+    <p class="subtitle">Red de IPS Sincelejo · Cartagena · Corozal</p>
+
+    {% if error %}
+    <div class="alert-error" role="alert" aria-live="polite">
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/auth/login" aria-label="Formulario de inicio de sesión">
+      <div class="form-group">
+        <label for="username">Usuario del Sistema:</label>
+        <input type="text" id="username" name="username" required autocomplete="username" autofocus>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Contraseña:</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password">
+      </div>
+
+      <button type="submit" class="btn-primary">Iniciar Sesión</button>
+    </form>
+
+    <section class="quick-users" aria-label="Usuarios de prueba rápida">
+      <h2>Usuarios de Demostración:</h2>
+      <div>
+        <button type="button" class="pill" onclick="llenar('paciente_carlos', 'Paciente123!')">Paciente (1001)</button>
+        <button type="button" class="pill" onclick="llenar('admision_laura', 'Admision123!')">Admisionista (Sede 2)</button>
+        <button type="button" class="pill" onclick="llenar('medico_mateo', 'Medico123!')">Médico (Sede 2)</button>
+        <button type="button" class="pill" onclick="llenar('auditor_elena', 'Auditor123!')">Auditor (Central)</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function llenar(user, pass) {
+      document.getElementById('username').value = user;
+      document.getElementById('password').value = pass;
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estación Clínica Médica · Red de IPS</title>
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text: #212529;
+      --primary: #6f42c1;
+      --border: #dee2e6;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 1.5rem;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      padding: 1rem 1.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+    }
+    .badge {
+      background: #e2d9f3;
+      color: #381e72;
+      padding: 0.35rem 0.75rem;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    h2 {
+      margin-top: 0;
+      color: #381e72;
+      border-bottom: 2px solid #e9ecef;
+      padding-bottom: 0.5rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+    label { font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.25rem; }
+    input, select, textarea {
+      width: 100%;
+      padding: 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .btn {
+      padding: 0.6rem 1.2rem;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn:hover { background: #59359a; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid var(--border); padding: 0.6rem; text-align: left; }
+    th { background: #f1f3f5; }
+    .sello-box {
+      background: #e8f5e9;
+      border: 1px solid #c8e6c9;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      font-family: monospace;
+      color: #1b5e20;
+    }
+    .alerta-caida {
+      background: #fff3cd;
+      color: #856404;
+      padding: 0.75rem;
+      border-radius: 4px;
+      border: 1px solid #ffeeba;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1 style="margin:0; font-size: 1.4rem;">Estación de Consulta y Evolución Médica</h1>
+      <small>Profesional: <strong>{{ usuario.nombre_completo }}</strong> ({{ usuario.documento_id }})</small>
+    </div>
+    <div>
+      <span class="badge">Rol: Médico</span>
+      <a href="/reporte" class="btn" style="background:#0056b3; margin-left: 0.5rem;">Reporte Completo & Tablero</a>
+      <a href="/auth/logout" class="btn" style="background:#dc3545; margin-left: 0.5rem;">Cerrar Sesión</a>
+    </div>
+  </header>
+
+  <main>
+    {% if sello_generado %}
+    <div class="sello-box" role="status">
+      <strong>✓ Sello Criptográfico Generado para el Egreso:</strong><br>
+      Hash SHA-256: {{ sello_generado }}<br>
+      <small>Registrado en cadena inmutable de auditoría. Este sello certifica el cierre médico de la atención.</small>
+    </div>
+    {% endif %}
+
+    <!-- Búsqueda de Historia Unificada -->
+    <section class="card">
+      <h2>1. Consulta de Historia Clínica Unificada (3 Sedes)</h2>
+      <form method="GET" action="/medico" style="display:flex; gap:0.5rem; align-items:flex-end;">
+        <div style="flex-grow:1;">
+          <label for="buscar_doc">Documento del Paciente:</label>
+          <input type="text" id="buscar_doc" name="buscar_doc" value="{{ buscar_doc or '1001' }}" required>
+        </div>
+        <button type="submit" class="btn">Consultar Historia Federada</button>
+      </form>
+    </section>
+
+    {% if historia %}
+      {% if not historia.reporte_completo %}
+      <div class="alerta-caida" role="alert">
+        ⚠️ <strong>Aviso de Resiliencia:</strong> {{ historia.aviso_incompletitud }}
+      </div>
+      {% endif %}
+
+      <section class="card">
+        <h2>2. Historia Clínica del Paciente: {{ historia.paciente.nombre_completo if historia.paciente else buscar_doc }}</h2>
+        <p>Documento: <strong>{{ buscar_doc }}</strong> · Total Atenciones Registradas: <strong>{{ historia.atenciones|length }}</strong></p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Sede</th>
+              <th>Visita</th>
+              <th>Clase</th>
+              <th>Diagnósticos CIE-10</th>
+              <th>Tecnologías / Laboratorios</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for at in historia.atenciones %}
+            <tr>
+              <td>{{ at.fecha_ingreso }}</td>
+              <td><span style="background:#e3f2fd; padding:0.2rem 0.5rem; border-radius:4px; font-weight:600;">{{ at.sede_origen }}</span></td>
+              <td><code>{{ at.numero_visita }}</code></td>
+              <td>{{ at.clase_atencion }}</td>
+              <td>
+                {% for dx in at.diagnosticos %}
+                  <span style="color:#d32f2f; font-weight:bold;">[{{ dx.cie10_codigo }}]</span> {{ dx.descripcion_cie10 }}<br>
+                {% else %}
+                  <em style="color:#888;">Sin diagnósticos</em>
+                {% endfor %}
+              </td>
+              <td>
+                {% for t in at.tecnologias %}
+                  {{ t.descripcion_loinc }} ({{ t.loinc_codigo }}): <strong>{{ t.valor }} {{ t.unidad }}</strong><br>
+                {% else %}
+                  <em style="color:#888;">Sin labs</em>
+                {% endfor %}
+              </td>
+              <td><strong>{{ at.estado }}</strong></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" style="text-align:center;">No se hallaron atenciones para este paciente.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Formulario Médico: Diagnosticar y Egreso con Sello -->
+      <section class="card">
+        <h2>3. Registro Clínico y Cierre de Atención con Sello</h2>
+        <form method="POST" action="/medico/registrar-evolucion">
+          <input type="hidden" name="documento_id" value="{{ buscar_doc }}">
+          <div class="grid">
+            <div>
+              <label for="numero_visita">Número de Visita a Evolucionar:</label>
+              <select id="numero_visita" name="numero_visita" required>
+                {% for at in historia.atenciones %}
+                  <option value="{{ at.numero_visita }}">{{ at.numero_visita }} ({{ at.sede_origen }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label for="cie10_codigo">Diagnóstico CIE-10:</label>
+              <select id="cie10_codigo" name="cie10_codigo" required>
+                <option value="J45.9">J45.9 - Asma, no especificada</option>
+                <option value="I10">I10 - Hipertensión esencial</option>
+                <option value="E11.9">E11.9 - Diabetes mellitus tipo 2</option>
+                <option value="A09">A09 - Gastroenteritis y diarrea</option>
+                <option value="N39.0">N39.0 - Infección urinaria</option>
+                <option value="M54.5">M54.5 - Lumbago</option>
+                <option value="J18.9">J18.9 - Neumonía</option>
+                <option value="R51">R51 - Cefalea</option>
+              </select>
+            </div>
+            <div>
+              <label for="motivo_egreso">Motivo de Egreso / Cierre:</label>
+              <input type="text" id="motivo_egreso" name="motivo_egreso" value="Mejoria clinica evidente" required>
+            </div>
+            <div>
+              <label for="condicion_salida">Condición de Salida:</label>
+              <select id="condicion_salida" name="condicion_salida" required>
+                <option value="MEJORADO" selected>Mejorado</option>
+                <option value="CURADO">Curado</option>
+                <option value="ESTABLE">Estable</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:1.25rem;">
+            <button type="submit" class="btn">Firmar Registro y Obtener Sello Criptográfico</button>
+          </div>
+        </form>
+      </section>
+    {% endif %}
+  </main>
+</body>
+</html>

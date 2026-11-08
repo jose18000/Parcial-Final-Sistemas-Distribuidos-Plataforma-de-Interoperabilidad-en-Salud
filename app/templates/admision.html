@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Módulo de Admisión y Triage · Red de IPS</title>
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text: #212529;
+      --primary: #28a745;
+      --border: #dee2e6;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 1.5rem;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      padding: 1rem 1.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+    }
+    .badge {
+      background: #d4edda;
+      color: #155724;
+      padding: 0.35rem 0.75rem;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    h2 {
+      margin-top: 0;
+      color: #155724;
+      border-bottom: 2px solid #e9ecef;
+      padding-bottom: 0.5rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+    label {
+      font-weight: 600;
+      font-size: 0.9rem;
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    input, select {
+      width: 100%;
+      padding: 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .btn {
+      padding: 0.6rem 1.2rem;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn:hover { background: #218838; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.6rem;
+      text-align: left;
+    }
+    th { background: #f1f3f5; }
+    .alerta-info {
+      background: #d1ecf1;
+      color: #0c5460;
+      padding: 0.75rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1 style="margin:0; font-size: 1.4rem;">Módulo de Admisión y Registro de Atenciones</h1>
+      <small>Usuario: <strong>{{ usuario.nombre_completo }}</strong> · Sede Actual: {{ usuario.sede_id or 'Cartagena' }}</small>
+    </div>
+    <div>
+      <span class="badge">Rol: Admisionista</span>
+      <a href="/auth/logout" class="btn" style="background:#dc3545; margin-left: 0.5rem;">Cerrar Sesión</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="alerta-info" role="status">
+      ℹ️ <strong>Mínimo Privilegio Activo:</strong> Como personal de admisión puede buscar pacientes, validar duplicados entre sedes y abrir atenciones con triage. Los diagnósticos clínicos están protegidos y no son visibles en esta vista.
+    </div>
+
+    <!-- Búsqueda y Detección de Paciente en Sedes -->
+    <section class="card">
+      <h2>1. Búsqueda y Validación de Paciente en las 3 Sedes</h2>
+      <form method="GET" action="/admision" style="display:flex; gap:0.5rem; align-items:flex-end;">
+        <div style="flex-grow:1;">
+          <label for="buscar_doc">Número de Documento del Paciente:</label>
+          <input type="text" id="buscar_doc" name="buscar_doc" value="{{ buscar_doc or '' }}" placeholder="Ej. 1001" required>
+        </div>
+        <button type="submit" class="btn">Buscar en Sedes</button>
+      </form>
+
+      {% if resultado_busqueda %}
+      <div style="margin-top:1.5rem; padding:1rem; background:#fdfdfe; border:1px solid #ced4da; border-radius:4px;">
+        <h3>Resultado de Identidad Federada:</h3>
+        {% if resultado_busqueda.paciente %}
+          <p><strong>Paciente Encontrado:</strong> {{ resultado_busqueda.paciente.nombre_completo }} (Doc: {{ resultado_busqueda.paciente.documento_id }})</p>
+          <p><strong>Sedes donde ya tiene expediente:</strong>
+            {% for s in resultado_busqueda.sedes_disponibles %}
+              <span style="background:#cfe2ff; padding:0.2rem 0.5rem; border-radius:3px;">Sede {{ s }}</span>
+            {% endfor %}
+          </p>
+          <p style="color:#28a745;">✓ El paciente ya existe en el sistema federado. Puede abrir una nueva atención sin duplicar datos demográficos.</p>
+        {% else %}
+          <p style="color:#e67e22;">⚠️ Paciente no encontrado en las sedes. Proceda a registrarlo en el formulario inferior.</p>
+        {% endif %}
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- Formulario de Admisión y Triage -->
+    <section class="card">
+      <h2>2. Apertura de Atención y Clasificación de Triage</h2>
+      {% if mensaje_post %}
+      <div style="background:#d4edda; color:#155724; padding:0.75rem; border-radius:4px; margin-bottom:1rem;">
+        {{ mensaje_post }}
+      </div>
+      {% endif %}
+
+      <form method="POST" action="/admision/abrir-atencion">
+        <div class="grid">
+          <div>
+            <label for="documento_id">Documento Paciente:</label>
+            <input type="text" id="documento_id" name="documento_id" value="{{ buscar_doc or '' }}" required>
+          </div>
+          <div>
+            <label for="nombre_completo">Nombre Completo:</label>
+            <input type="text" id="nombre_completo" name="nombre_completo" placeholder="Ej. Carlos Perez" required>
+          </div>
+          <div>
+            <label for="fecha_nacimiento">Fecha de Nacimiento:</label>
+            <input type="date" id="fecha_nacimiento" name="fecha_nacimiento" required>
+          </div>
+          <div>
+            <label for="sexo">Sexo Biológico:</label>
+            <select id="sexo" name="sexo" required>
+              <option value="M">Masculino (M)</option>
+              <option value="F">Femenino (F)</option>
+              <option value="O">Otro (O)</option>
+            </select>
+          </div>
+          <div>
+            <label for="sede_id">Sede de Admisión:</label>
+            <select id="sede_id" name="sede_id" required>
+              <option value="1">Sede 1 - Sincelejo</option>
+              <option value="2" selected>Sede 2 - Cartagena</option>
+              <option value="3">Sede 3 - Corozal</option>
+            </select>
+          </div>
+          <div>
+            <label for="clase_atencion">Clase de Atención:</label>
+            <select id="clase_atencion" name="clase_atencion" required>
+              <option value="E">Urgencias (EMER)</option>
+              <option value="O">Ambulatoria (AMB)</option>
+              <option value="I">Hospitalización (IMP)</option>
+            </select>
+          </div>
+          <div>
+            <label for="triage">Nivel de Triage (1-5):</label>
+            <select id="triage" name="triage" required>
+              <option value="1">Triage 1 - Resucitación (Rojo)</option>
+              <option value="2">Triage 2 - Emergencia (Naranja)</option>
+              <option value="3" selected>Triage 3 - Urgencia (Amarillo)</option>
+              <option value="4">Triage 4 - Menor Urgencia (Verde)</option>
+              <option value="5">Triage 5 - No Urgente (Azul)</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:1.25rem;">
+          <button type="submit" class="btn">Registrar y Enviar al Bus (HSB)</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Monitor de Mensajes del Bus -->
+    <section class="card">
+      <h2>3. Monitor de Mensajes Enviados al HSB</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Mensaje ID</th>
+            <th>Formato</th>
+            <th>Sede</th>
+            <th>Estado</th>
+            <th>Intentos</th>
+            <th>Hash Contenido (Idempotencia)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in mensajes_recientes %}
+          <tr>
+            <td><code>{{ m.mensaje_id }}</code></td>
+            <td>{{ m.formato }}</td>
+            <td>Sede {{ m.sede_origen }}</td>
+            <td><strong>{{ m.estado }}</strong></td>
+            <td>{{ m.intentos }}</td>
+            <td><code>{{ m.hash_contenido[:16] }}...</code></td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" style="text-align:center; color:#777;">No hay mensajes registrados recientemente en el bus.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reporte Integral de HC & Tablero de Estado · Red de IPS</title>
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text: #212529;
+      --primary: #0056b3;
+      --border: #dee2e6;
+      --danger: #dc3545;
+      --success: #28a745;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 1.5rem;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      padding: 1rem 1.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    h2 {
+      margin-top: 0;
+      color: #0b2e4f;
+      border-bottom: 2px solid #e9ecef;
+      padding-bottom: 0.5rem;
+    }
+    .btn {
+      padding: 0.5rem 1rem;
+      background: var(--primary);
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      display: inline-block;
+    }
+    .btn:hover { background: #004085; }
+    .btn-print { background: #6c757d; }
+    .btn-danger { background: var(--danger); }
+    .alerta {
+      background: #fff3cd;
+      color: #856404;
+      padding: 1rem;
+      border-radius: 4px;
+      border: 1px solid #ffeeba;
+      margin-bottom: 1.5rem;
+      font-size: 1rem;
+    }
+    .grid-tablero {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+    .metric-box {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem;
+      background: #fafbfc;
+    }
+    .metric-value {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: var(--primary);
+      margin: 0.5rem 0;
+    }
+    .badge-up { background: #d4edda; color: #155724; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: bold; }
+    .badge-down { background: #f8d7da; color: #721c24; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+    th, td { border: 1px solid var(--border); padding: 0.6rem; text-align: left; }
+    th { background: #f1f3f5; }
+    @media print {
+      .header, .no-print { display: none !important; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1 style="margin:0; font-size: 1.4rem;">Reporte Unificado & Tablero de Observabilidad</h1>
+      <small>Accedido por: <strong>{{ usuario.nombre_completo }}</strong> (Rol: {{ usuario.rol }})</small>
+    </div>
+    <div class="no-print">
+      <button onclick="window.print()" class="btn btn-print">🖨️ Imprimir Reporte</button>
+      <a href="/api/pacientes/{{ buscar_doc or '1001' }}/bundle" class="btn" download>📥 Descargar Bundle FHIR</a>
+      <a href="/auth/logout" class="btn btn-danger" style="margin-left:0.5rem;">Cerrar Sesión</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- Selector de Documento -->
+    <section class="card no-print">
+      <form method="GET" action="/reporte" style="display:flex; gap:0.5rem; align-items:flex-end;">
+        <div style="flex-grow:1;">
+          <label for="buscar_doc"><strong>Consultar Reporte de Paciente por Documento:</strong></label>
+          <input type="text" id="buscar_doc" name="buscar_doc" value="{{ buscar_doc or '1001' }}" style="width:100%; padding:0.6rem; border:1px solid #ced4da; border-radius:4px;" required>
+        </div>
+        <button type="submit" class="btn">Actualizar Reporte</button>
+      </form>
+    </section>
+
+    <!-- Aviso de Fallo Parcial / Tolerancia a Fallos -->
+    {% if not historia.reporte_completo %}
+    <div class="alerta" role="alert">
+      <strong>⚠️ REPORTE CLÍNICO INCOMPLETO (Tolerancia a Fallos Activa):</strong><br>
+      {{ historia.aviso_incompletitud }}<br>
+      Sedes que respondieron: <strong>{{ historia.sedes_disponibles }}</strong>. Sedes no disponibles: 
+      {% for sn in historia.sedes_no_disponibles %}
+        <span class="badge-down">Sede {{ sn.sede_id }} ({{ sn.nombre }})</span> 
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Reporte Clínico Agrupado por Sede -->
+    <section class="card">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <h2>Reporte Clínico Federado del Paciente: {{ historia.paciente.nombre_completo if historia.paciente else buscar_doc }}</h2>
+          <p>Documento de Identidad: <strong>{{ buscar_doc }}</strong> · Sello de Integridad del Reporte: <code>{{ sello_reporte }}</code></p>
+        </div>
+        <div>
+          {% if historia.reporte_completo %}
+            <span class="badge-up" style="font-size:0.9rem;">EXPEDIENTE COMPLETO (3/3 Sedes)</span>
+          {% else %}
+            <span class="badge-down" style="font-size:0.9rem;">EXPEDIENTE PARCIAL</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Atenciones agrupadas por sede -->
+      {% for at in historia.atenciones %}
+      <div style="margin-bottom:1.25rem; border:1px solid #dee2e6; border-radius:4px; padding:1rem; background:#fff;">
+        <div style="display:flex; justify-content:space-between; background:#e9ecef; padding:0.5rem 0.75rem; border-radius:4px; margin:-1rem -1rem 0.75rem -1rem;">
+          <span><strong>{{ at.sede_origen }}</strong> · Visita: <code>{{ at.numero_visita }}</code></span>
+          <span>Fecha Ingreso: <strong>{{ at.fecha_ingreso }}</strong></span>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+          <div>
+            <strong>Diagnósticos Registrados (CIE-10):</strong>
+            <ul>
+              {% for dx in at.diagnosticos %}
+                <li><code>{{ dx.cie10_codigo }}</code>: {{ dx.descripcion_cie10 }} ({{ dx.tipo }})</li>
+              {% else %}
+                <li style="color:#777;">Sin diagnósticos</li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div>
+            <strong>Resultados de Laboratorio / Observaciones (LOINC):</strong>
+            <ul>
+              {% for t in at.tecnologias %}
+                <li>{{ t.descripcion_loinc }} [{{ t.loinc_codigo }}]: <strong>{{ t.valor }} {{ t.unidad }}</strong></li>
+              {% else %}
+                <li style="color:#777;">Sin tecnologías/laboratorios</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <p style="text-align:center; color:#777;">No se hallaron registros clínicos para este paciente.</p>
+      {% endfor %}
+    </section>
+
+    <!-- TABLERO DE ESTADO DE LA PLATAFORMA (Observabilidad) -->
+    <section class="card no-print" style="border-top: 4px solid var(--primary);">
+      <h2>Tablero de Estado y Observabilidad en Tiempo Real</h2>
+
+      <div class="grid-tablero">
+        <!-- Estado de Nodos -->
+        <div class="metric-box">
+          <h3>Nodos de Base de Datos</h3>
+          <div class="metric-value">{{ tablero.nodos.activos }} / {{ tablero.nodos.total }}</div>
+          <small>Disponibilidad por sede:</small>
+          <ul style="margin:0.5rem 0 0 0; padding-left:1.2rem;">
+            {% for s_key, s_data in tablero.nodos.detalles.items() %}
+            <li>
+              {{ s_data.nombre }}: 
+              {% if s_data.disponible %}
+                <span class="badge-up">ONLINE</span>
+              {% else %}
+                <span class="badge-down">CAÍDO</span>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <!-- Cobertura FHIR por Sede -->
+        <div class="metric-box">
+          <h3>Cobertura FHIR por Sede</h3>
+          <ul style="margin:0.5rem 0 0 0; padding-left:1.2rem; font-size:0.95rem;">
+            {% for s_key, s_data in tablero.nodos.detalles.items() %}
+            <li style="margin-bottom:0.4rem;">
+              {{ s_data.nombre }}: <strong>{{ s_data.porcentaje_cobertura }}%</strong><br>
+              <small style="color:#666;">({{ s_data.pacientes_con_fhir }} de {{ s_data.total_pacientes }} con fhir_patient_id)</small>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <!-- Métricas del HSB -->
+        <div class="metric-box">
+          <h3>Métricas del HSB (Bus)</h3>
+          <div style="font-size:0.9rem;">
+            Entregados: <strong>{{ tablero.bus.total_entregados }}</strong><br>
+            Rechazados: <strong>{{ tablero.bus.total_rechazados }}</strong><br>
+            Duplicados Detectados: <strong>{{ tablero.bus.total_duplicados_detectados }}</strong><br>
+            Mensajes Muertos: <strong>{{ tablero.bus.total_mensajes_muertos }}</strong><br>
+            Latencia Media: <strong>{{ tablero.bus.latencia_media_ms }} ms</strong><br>
+            Tasa de Fallos: <strong>{{ tablero.bus.porcentaje_fallidos }}%</strong>
+          </div>
+        </div>
+
+        <!-- Verificador Criptográfico de Auditoría -->
+        <div class="metric-box" style="border: 2px solid {% if tablero.auditoria.cadena_integra %}#28a745{% else %}#dc3545{% endif %};">
+          <h3>Cadena de Auditoría (SHA-256)</h3>
+          <div style="font-weight:bold; color:{% if tablero.auditoria.cadena_integra %}#155724{% else %}#721c24{% endif %};">
+            {{ tablero.auditoria.estado_verificador }}
+          </div>
+          <p style="font-size:0.85rem; margin:0.5rem 0;">
+            Total Eventos Encadenados: <strong>{{ tablero.auditoria.total_eventos_registrados }}</strong>
+          </p>
+
+          {% if not tablero.auditoria.cadena_integra %}
+          <div style="background:#f8d7da; color:#721c24; padding:0.5rem; border-radius:4px; font-size:0.8rem;">
+            <strong>Primer evento adulterado:</strong><br>
+            ID: {{ tablero.auditoria.detalle_alteracion.evento_id }}<br>
+            Motivo: {{ tablero.auditoria.detalle_alteracion.motivo }}
+          </div>
+          {% endif %}
+
+          <div style="margin-top:0.75rem;">
+            <form method="POST" action="/api/auditoria/alterar-prueba" style="display:inline;">
+              <button type="submit" class="btn btn-danger" style="font-size:0.75rem; padding:0.3rem 0.6rem;">
+                ⚠️ Demostrar Alteración en Vivo
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

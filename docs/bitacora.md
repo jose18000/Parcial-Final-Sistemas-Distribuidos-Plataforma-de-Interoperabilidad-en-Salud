@@ -60,7 +60,19 @@
 
 ## Fase 4 · Seguridad, resiliencia y despliegue
 
-*(pendiente)*
+| Fecha | Integrante | Actividad | IA / Código abierto |
+|-------|-----------|-----------|---------------------|
+| 2026-11-08 | A — Jose Canchila | Motor de auditoría encadenada por hash SHA-256 (`app/audit.py`), algoritmo verificador de integridad y soporte de simulación de alteración maliciosa | Antigravity — implementación matemática de la cadena inmutable |
+| 2026-11-08 | A — Jose Canchila | Orquestación completa de 6 servicios en `docker-compose.yml`, Dockerfile de la API Gateway (`app/Dockerfile`) y manifiestos de Kubernetes para Minikube (`infra/k8s/`) | Antigravity — configuración de probes y servicios k8s |
+| 2026-11-08 | B — Sharit Manjarrez | Autenticación JWT y matriz RBAC con 4 roles (`app/auth.py`, `app/rbac.py`) y plantillas HTML accesibles (`app/templates/`) | Antigravity — diseño de vistas accesibles y middleware de seguridad |
+| 2026-11-08 | B — Sharit Manjarrez | Suite de pruebas de seguridad y resiliencia (`tests/fase4/test_security_resilience.py`) e informe de Fase 4 (Viabilidad técnica y Ley 1581) | Antigravity — redacción técnica y diseño de casos de prueba |
+| 2026-11-08 | A + B | Demostración de caída de sede (degradación a reporte parcial), prueba de detección de auditoría alterada y respuesta a pregunta de autoevaluación | — |
+
+### Uso declarado de IA en Fase 4
+- **Herramienta:** Antigravity (Google DeepMind) vía IDE integrado.
+- **Uso:** Asistencia en la formulación criptográfica de la cadena de hash SHA-256, diseño de la matriz RBAC en FastAPI con excepciones HTTP 403, maquetación de plantillas HTML accesibles para las 4 vistas y manifiestos declarativos de Kubernetes.
+- **Revisión humana:** Se probó que un usuario paciente recibiera error 403 al solicitar historias ajenas, que la adulteración de un registro en memoria activara la alerta del verificador señalando el bloque exacto, y que la caída de un nodo no interrumpiera el servicio de consulta.
+- **Código abierto:** Python-Jose (MIT), Passlib (BSD), Jinja2 (BSD), Kubernetes Client / Manifests.*
 
 ---
 

@@ -147,3 +147,4 @@ Cuando el servidor HAPI FHIR se detiene temporalmente (`docker compose stop hapi
    - El HSB retoma la secuencia programada: vuelve a intentar el envío a HAPI FHIR.
    - **Por qué NO duplica en HAPI FHIR:** El Bundle transaccional utiliza operaciones **`PUT` con identificadores deterministas** basados en el documento del paciente y el número de visita (`Patient/pac-1007`, `Encounter/enc-V-S2-0101`). En el estándar FHIR R4, un `PUT` sobre un recurso existente es estrictamente idempotente: actualiza el recurso con el mismo contenido sin generar nuevos identificadores autonuméricos.
    - **Por qué NO duplica en PostgreSQL:** Al completarse la llamada a HAPI, el bus ejecuta la inserción en el nodo de la sede utilizando cláusulas `ON CONFLICT (documento_id) DO UPDATE` y `ON CONFLICT (numero_visita) DO NOTHING`. El registro clínico se consolida de forma íntegra y el mensaje pasa formalmente a estado `ENTREGADO`.
+
