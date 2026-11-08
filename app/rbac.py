@@ -125,3 +125,4 @@ def validar_acceso_historia_clinica(documento_objetivo: str, usuario: Dict[str, 
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Acceso denegado: El rol 'admisionista' no tiene permiso para consultar historias clínicas completas."
     )
+

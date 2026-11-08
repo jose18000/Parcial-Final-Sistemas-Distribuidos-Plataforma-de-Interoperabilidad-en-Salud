@@ -130,3 +130,4 @@ def obtener_estado_general_plataforma() -> Dict[str, Any]:
         "bus": metricas_bus,
         "auditoria": auditoria_status
     }
+

@@ -152,3 +152,4 @@ def adulterar_evento_para_prueba(indice: int = 0, campo: str = "usuario_sistema"
 def obtener_ultimos_eventos(limite: int = 50) -> List[Dict[str, Any]]:
     """Retorna los eventos más recientes de la auditoría."""
     return list(reversed(_CADENA_AUDITORIA[-limite:]))
+

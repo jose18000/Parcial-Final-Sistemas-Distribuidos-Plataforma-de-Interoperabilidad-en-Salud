@@ -499,3 +499,4 @@ def api_metrics():
         "usuarios_de_prueba_activos": len(USUARIOS_PRUEBA),
         "timestamp": time.time()
     }
+
