@@ -1,0 +1,196 @@
+{
+  "resourceType": "Bundle",
+  "id": "bundle-pac-1001",
+  "type": "transaction",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:pac-1001",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "pac-1001",
+        "identifier": [
+          {
+            "use": "official",
+            "system": "https://minsalud.gov.co/identificacion-pacientes",
+            "value": "1001"
+          }
+        ],
+        "active": true,
+        "name": [
+          {
+            "use": "official",
+            "family": "Perez",
+            "given": [
+              "Carlos"
+            ]
+          }
+        ],
+        "gender": "male",
+        "birthDate": "1980-04-12",
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "3001234567",
+            "use": "mobile"
+          }
+        ],
+        "address": [
+          {
+            "use": "home",
+            "text": "Calle 22 # 14-30, Sincelejo"
+          }
+        ]
+      },
+      "request": {
+        "method": "PUT",
+        "url": "Patient/pac-1001"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:enc-V-S1-0150",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "enc-V-S1-0150",
+        "identifier": [
+          {
+            "system": "https://clinica.local/visitas",
+            "value": "V-S1-0150"
+          }
+        ],
+        "status": "finished",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "EMER",
+          "display": "emergency"
+        },
+        "subject": {
+          "reference": "Patient/pac-1001"
+        },
+        "period": {
+          "start": "2026-11-07T11:00:00Z",
+          "end": "2026-11-07T15:30:00Z"
+        },
+        "serviceProvider": {
+          "reference": "Organization/org-sede-1",
+          "display": "Sede 1"
+        },
+        "priority": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ActPriority",
+              "code": "T2",
+              "display": "Triage 2"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "Encounter/enc-V-S1-0150"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:cond-V-S1-0150-I10",
+      "resource": {
+        "resourceType": "Condition",
+        "id": "cond-V-S1-0150-I10",
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active",
+              "display": "Active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed",
+              "display": "Confirmed"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "code": "encounter-diagnosis",
+                "display": "Encounter Diagnosis"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://hl7.org/fhir/sid/icd-10",
+              "code": "I10",
+              "display": "Hipertensión esencial"
+            }
+          ],
+          "text": "Hipertensión esencial"
+        },
+        "subject": {
+          "reference": "Patient/pac-1001"
+        },
+        "encounter": {
+          "reference": "Encounter/enc-V-S1-0150"
+        },
+        "recordedDate": "2026-11-07"
+      },
+      "request": {
+        "method": "PUT",
+        "url": "Condition/cond-V-S1-0150-I10"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:obs-V-S1-0150-7187",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "obs-V-S1-0150-7187",
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory",
+                "display": "Laboratory"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "718-7",
+              "display": "Hemoglobina [Masa/volumen] en sangre"
+            }
+          ],
+          "text": "Hemoglobina [Masa/volumen] en sangre"
+        },
+        "subject": {
+          "reference": "Patient/pac-1001"
+        },
+        "encounter": {
+          "reference": "Encounter/enc-V-S1-0150"
+        },
+        "effectiveDateTime": "2026-11-07T11:30:00Z",
+        "valueQuantity": {
+          "value": 13.8,
+          "unit": "g/dL",
+          "system": "http://unitsofmeasure.org",
+          "code": "g/dL"
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "Observation/obs-V-S1-0150-7187"
+      }
+    }
+  ]
+}
