@@ -71,3 +71,4 @@ def validar_mensaje_pre_transformacion(parsed: Dict[str, Any]) -> Tuple[bool, Li
 
     es_valido = len(motivos) == 0
     return es_valido, motivos
+

@@ -118,6 +118,42 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── API Gateway & Vistas por Rol (:8000) ───────────────────
+  api:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: api_gateway
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-CLINICA_DISTRIBUIDA_SECRET_TOKEN_KEY_2026_HS256_UNSECURED_DEV_ONLY}
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRE_MINUTES=60
+      - HSB_URL=http://hsb:8001
+      - HSB_METRICS_URL=http://hsb:8001/metrics
+      - DB_HOST_SEDE1=pg_sede1
+      - DB_PORT_SEDE1=5432
+      - DB_NAME_SEDE1=${DB_NAME_SEDE1:-clinica_sincelejo}
+      - DB_HOST_SEDE2=pg_sede2
+      - DB_PORT_SEDE2=5432
+      - DB_NAME_SEDE2=${DB_NAME_SEDE2:-clinica_cartagena}
+      - DB_HOST_SEDE3=pg_sede3
+      - DB_PORT_SEDE3=5432
+      - DB_NAME_SEDE3=${DB_NAME_SEDE3:-clinica_corozal}
+      - POSTGRES_USER=${POSTGRES_USER:-clinica_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-clinica_pass_2026}
+    depends_on:
+      hsb:
+        condition: service_started
+      pg_sede1:
+        condition: service_healthy
+      pg_sede2:
+        condition: service_healthy
+      pg_sede3:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pg_data_sede1:
   pg_data_sede2:

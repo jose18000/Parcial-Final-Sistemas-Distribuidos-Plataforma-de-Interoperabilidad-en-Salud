@@ -126,3 +126,4 @@ def parse_csv_rows(content: str, sede_id: int) -> List[Dict[str, Any]]:
         records.append(record)
 
     return records
+
