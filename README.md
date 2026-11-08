@@ -54,14 +54,14 @@ docker compose down -v && docker compose up -d
 
 > **Nota de Fase 1:** `docker-compose.yml` es un esqueleto; la implementación completa está en Fase 2.
 
-## Usuarios de prueba (Fase 4)
+## Usuarios de prueba (Fase 4 y 5)
 
-| Usuario | Contraseña | Rol | Sede |
-|---------|-----------|-----|------|
-| `paciente01` | `Test1234!` | paciente | — |
-| `admision02` | `Test1234!` | admisionista | Cartagena |
-| `medico03` | `Test1234!` | medico | Sincelejo |
-| `auditor04` | `Test1234!` | auditor | — |
+| Usuario | Contraseña | Rol | Acceso / Funcionalidad |
+|---------|-----------|-----|------------------------|
+| `paciente_carlos` | `Paciente123!` | `paciente` | Ver su propia historia (1001), descargar bundle FHIR, consultar trazabilidad de accesos. |
+| `admision_laura` | `Admision123!` | `admisionista` | Búsqueda de pacientes en las 3 sedes, apertura de atenciones con triage, monitor del HSB. |
+| `medico_mateo` | `Medico123!` | `medico` | Consulta de historias unificadas, registro de diagnósticos CIE-10, egreso con sello hash. |
+| `auditor_elena` | `Auditor123!` | `auditor` | Reporte integral, tablero de observabilidad en vivo, verificador criptográfico de auditoría. |
 
 ## Enviar mensajes de ejemplo al HSB (Fase 3)
 
