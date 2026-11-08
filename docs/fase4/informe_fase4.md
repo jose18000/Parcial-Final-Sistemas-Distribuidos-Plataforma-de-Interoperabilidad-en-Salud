@@ -176,3 +176,4 @@ Se diseñaron 4 vistas principales y el tablero de control cumpliendo lineamient
    - `hash_propio`: Enlazado criptográficamente con el evento previo.
 
 El incidente queda sellado de forma permanente sin que el paciente pueda borrar el rastro de la auditoría.
+

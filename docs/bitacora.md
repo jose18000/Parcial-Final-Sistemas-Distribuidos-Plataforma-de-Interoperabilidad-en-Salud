@@ -78,7 +78,19 @@
 
 ## Fase 5 · Prototipo final y sustentación
 
-*(pendiente)*
+| Fecha | Integrante | Actividad | IA / Código abierto |
+|-------|-----------|-----------|---------------------|
+| 2026-11-08 | A — Jose Canchila | Integración final del prototipo, validación del arranque limpio con `docker compose down -v && docker compose up -d`, guion de demostración de 15 min (`docs/guion_demostracion.md`) | Antigravity — estructuración del guion y cronometraje |
+| 2026-11-08 | A — Jose Canchila | Preparación técnica de las 5 preguntas de sustentación oral (`docs/preguntas_sustentacion.md`), etiquetado de versión `v1.0` en Git y actualización del README | Antigravity — formulación de respuestas arquitecturales |
+| 2026-11-08 | B — Sharit Manjarrez | Consolidación del informe final en plantilla v7 (`docs/informe_final_v7.md`) con 8 referencias en formato APA 7 y matriz de criterios RF1 a RF6 | Antigravity — revisión de formato APA 7 y consistencia teórica |
+| 2026-11-08 | B — Sharit Manjarrez | Elaboración de diapositivas de sustentación (`docs/presentacion_sustentacion.md`) y recolección de mediciones de telemetría (latencias y cobertura) | Antigravity — maquetación de diapositivas y tablas comparativas |
+| 2026-11-08 | A + B | Ensayo general de la sustentación (15 min demo + 10 min preguntas), verificación de no duplicación, prueba de caída en vivo y cierre de bitácora | — |
+
+### Uso declarado de IA en Fase 5
+- **Herramienta:** Antigravity (Google DeepMind) vía IDE integrado.
+- **Uso:** Asistencia en la consolidación del informe final en plantilla v7, estructuración del guion cronometrado de 15 minutos, elaboración de diapositivas de apoyo para la defensa oral y redacción de argumentos técnicos para las preguntas de sustentación.
+- **Revisión humana:** Ambos integrantes revisaron y memorizaron las respuestas a las 5 preguntas típicas de examen, verificaron que las 8 fuentes citadas existan y hayan sido consultadas, y ejecutaron el arranque completo sin errores desde cero.
+- **Código abierto:** FastAPI, HAPI FHIR, PostgreSQL, Uvicorn, Jinja2, HTTPX, Docker Compose.*
 
 ---
 
