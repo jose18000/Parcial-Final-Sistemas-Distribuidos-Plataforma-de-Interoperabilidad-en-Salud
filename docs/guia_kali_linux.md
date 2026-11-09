@@ -115,3 +115,4 @@ python3 -m unittest tests/fase3/test_hsb_integration.py
 python3 -m unittest tests/fase4/test_security_resilience.py
 ```
 *(Todas pasan con 100 % de éxito).*
+

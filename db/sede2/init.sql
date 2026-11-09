@@ -3,9 +3,12 @@
 
 \i /docker-entrypoint-initdb.d/00_schema.sql
 
--- 1. Sede
+-- 1. Sede (catálogo completo de sedes)
 INSERT INTO sede (sede_id, nombre, ciudad, activa)
-VALUES (2, 'IPS Cartagena Bocagrande', 'Cartagena', TRUE)
+VALUES
+    (1, 'IPS Sincelejo Central',     'Sincelejo', TRUE),
+    (2, 'IPS Cartagena Bocagrande',  'Cartagena', TRUE),
+    (3, 'IPS Corozal La Perla',      'Corozal',   TRUE)
 ON CONFLICT (sede_id) DO NOTHING;
 
 -- 2. Profesionales de Sede 2

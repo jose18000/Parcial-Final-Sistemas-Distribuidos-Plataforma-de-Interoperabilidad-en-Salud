@@ -52,6 +52,15 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "t
 HSB_URL = os.getenv("HSB_URL", "http://localhost:8001")
 
 
+def render_template(template_name: str, context: dict, status_code: int = 200):
+    """Renderiza plantillas Jinja2 siendo compatible con todas las versiones de Starlette."""
+    request = context.get("request")
+    try:
+        return templates.TemplateResponse(request=request, name=template_name, context=context, status_code=status_code)
+    except TypeError:
+        return templates.TemplateResponse(template_name, context, status_code=status_code)
+
+
 # Evento Génesis al iniciar
 @app.on_event("startup")
 def evento_inicio():
@@ -75,7 +84,7 @@ def root():
 
 @app.get("/login", response_class=HTMLResponse)
 def vista_login(request: Request, error: Optional[str] = None):
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    return render_template("login.html", {"request": request, "error": error})
 
 
 @app.post("/auth/login")
@@ -94,7 +103,7 @@ async def login(
             resultado="FALLIDO",
             detalle={"motivo": "Credenciales inválidas"}
         )
-        return templates.TemplateResponse(
+        return render_template(
             "login.html",
             {"request": request, "error": "Credenciales inválidas. Compruebe su usuario y contraseña."},
             status_code=status.HTTP_401_UNAUTHORIZED
@@ -165,7 +174,7 @@ def vista_paciente(request: Request, usuario: Dict[str, Any] = Depends(requerir_
         detalle={"consulta_propia": True}
     )
 
-    return templates.TemplateResponse("paciente.html", {
+    return render_template("paciente.html", {
         "request": request,
         "usuario": usuario,
         "historia": historia,
@@ -204,7 +213,7 @@ def vista_admision(
     except Exception:
         pass
 
-    return templates.TemplateResponse("admision.html", {
+    return render_template("admision.html", {
         "request": request,
         "usuario": usuario,
         "buscar_doc": buscar_doc,
@@ -266,7 +275,7 @@ async def abrir_atencion(
     )
 
     msg = f"✓ Atención {visita_id} creada exitosamente para el paciente {nombre_completo}. Enviada al bus de la Sede {sede_id}."
-    return templates.TemplateResponse("admision.html", {
+    return render_template("admision.html", {
         "request": request,
         "usuario": usuario,
         "buscar_doc": documento_id,
@@ -295,7 +304,7 @@ def vista_medico(
         detalle={"total_atenciones": len(historia.get("atenciones", []))}
     )
 
-    return templates.TemplateResponse("medico.html", {
+    return render_template("medico.html", {
         "request": request,
         "usuario": usuario,
         "buscar_doc": buscar_doc,
@@ -365,7 +374,7 @@ def vista_reporte_tablero(
         detalle={"reporte_completo": historia.get("reporte_completo")}
     )
 
-    return templates.TemplateResponse("reporte_tablero.html", {
+    return render_template("reporte_tablero.html", {
         "request": request,
         "usuario": usuario,
         "buscar_doc": buscar_doc,
