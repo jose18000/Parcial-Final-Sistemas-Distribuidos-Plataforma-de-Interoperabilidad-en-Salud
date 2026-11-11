@@ -1,31 +1,31 @@
 # Verificación de interoperabilidad por sede
 
-Ejecutado el 2026-11-11 08:51 contra `http://192.168.1.94:8000` (script `scripts/verificar_interoperabilidad.py`).
+Ejecutado el 2026-11-11 12:06 contra `https://localhost:8000` (script `scripts/verificar_interoperabilidad.py`).
 
-**Resultado: 63 de 63 comprobaciones correctas (100.0 %).**
+**Resultado: 70 de 70 comprobaciones correctas (100.0 %).**
 
 | Ámbito | Correctas |
 |---|---|
 | Sede 1 · Sincelejo (PostgreSQL) | 18 / 18 |
 | Sede 2 · Cartagena (MongoDB) | 18 / 18 |
 | Sede 3 · Corozal (PostgreSQL) | 18 / 18 |
-| Red (3 sedes) | 9 / 9 |
+| Red (3 sedes) | 16 / 16 |
 
 ## Sede 1 · Sincelejo (PostgreSQL)
 
 | Sección | Comprobación | Resultado | Detalle |
 |---|---|---|---|
 | HL7 v2 | ADT^A01 entregado | ✅ | entregado |
-| FHIR | Patient y Encounter en HAPI | ✅ | pac-84616592 |
+| FHIR | Patient y Encounter en HAPI | ✅ | pac-84284236 |
 | Base de la sede | Guardado en PostgreSQL y leído por la consulta unificada | ✅ | [1] |
 | Idempotencia | Reenvío del mismo HL7 = duplicado | ✅ | duplicado |
 | HL7 v2 | ORU^R01 entregado y Observation LOINC en HAPI | ✅ | entregado |
 | FHIR | El ORU no borra el diagnóstico del Encounter | ✅ | diagnosis presente |
 | CSV legado | Fila CSV entregada con dx_local -> CIE-10 | ✅ | 1 |
-| FHIR | Condition I10 del CSV en HAPI | ✅ | pac-80872494 |
+| FHIR | Condition I10 del CSV en HAPI | ✅ | pac-86095896 |
 | JSON | Registro JSON entregado | ✅ | entregado |
-| Admisión | Paciente admitido y publicado en FHIR | ✅ | pac-80195340 |
-| Cuentas | Cuenta del portal creada (origen ADMISION, clave temporal) | ✅ | 80195340 |
+| Admisión | Paciente admitido y publicado en FHIR | ✅ | pac-80415335 |
+| Cuentas | Cuenta del portal creada (origen ADMISION, clave temporal) | ✅ | 80415335 |
 | Médico | Diagnostico guardado con código de verificación | ✅ | entregado |
 | Médico | Formula guardado con código de verificación | ✅ | entregado |
 | Médico | Egreso guardado con código de verificación | ✅ | entregado |
@@ -39,16 +39,16 @@ Ejecutado el 2026-11-11 08:51 contra `http://192.168.1.94:8000` (script `scripts
 | Sección | Comprobación | Resultado | Detalle |
 |---|---|---|---|
 | HL7 v2 | ADT^A01 entregado | ✅ | entregado |
-| FHIR | Patient y Encounter en HAPI | ✅ | pac-84348355 |
+| FHIR | Patient y Encounter en HAPI | ✅ | pac-88120262 |
 | Base de la sede | Guardado en MongoDB y leído por la consulta unificada | ✅ | [2] |
 | Idempotencia | Reenvío del mismo HL7 = duplicado | ✅ | duplicado |
 | HL7 v2 | ORU^R01 entregado y Observation LOINC en HAPI | ✅ | entregado |
 | FHIR | El ORU no borra el diagnóstico del Encounter | ✅ | diagnosis presente |
 | CSV legado | Fila CSV entregada con dx_local -> CIE-10 | ✅ | 1 |
-| FHIR | Condition I10 del CSV en HAPI | ✅ | pac-80988759 |
+| FHIR | Condition I10 del CSV en HAPI | ✅ | pac-89398835 |
 | JSON | Registro JSON entregado | ✅ | entregado |
-| Admisión | Paciente admitido y publicado en FHIR | ✅ | pac-84053834 |
-| Cuentas | Cuenta del portal creada (origen ADMISION, clave temporal) | ✅ | 84053834 |
+| Admisión | Paciente admitido y publicado en FHIR | ✅ | pac-86284202 |
+| Cuentas | Cuenta del portal creada (origen ADMISION, clave temporal) | ✅ | 86284202 |
 | Médico | Diagnostico guardado con código de verificación | ✅ | entregado |
 | Médico | Formula guardado con código de verificación | ✅ | entregado |
 | Médico | Egreso guardado con código de verificación | ✅ | entregado |
@@ -62,16 +62,16 @@ Ejecutado el 2026-11-11 08:51 contra `http://192.168.1.94:8000` (script `scripts
 | Sección | Comprobación | Resultado | Detalle |
 |---|---|---|---|
 | HL7 v2 | ADT^A01 entregado | ✅ | entregado |
-| FHIR | Patient y Encounter en HAPI | ✅ | pac-83223373 |
+| FHIR | Patient y Encounter en HAPI | ✅ | pac-88462097 |
 | Base de la sede | Guardado en PostgreSQL y leído por la consulta unificada | ✅ | [3] |
 | Idempotencia | Reenvío del mismo HL7 = duplicado | ✅ | duplicado |
 | HL7 v2 | ORU^R01 entregado y Observation LOINC en HAPI | ✅ | entregado |
 | FHIR | El ORU no borra el diagnóstico del Encounter | ✅ | diagnosis presente |
 | CSV legado | Fila CSV entregada con dx_local -> CIE-10 | ✅ | 1 |
-| FHIR | Condition I10 del CSV en HAPI | ✅ | pac-80701780 |
+| FHIR | Condition I10 del CSV en HAPI | ✅ | pac-85365455 |
 | JSON | Registro JSON entregado | ✅ | entregado |
-| Admisión | Paciente admitido y publicado en FHIR | ✅ | pac-84826031 |
-| Cuentas | Cuenta del portal creada (origen ADMISION, clave temporal) | ✅ | 84826031 |
+| Admisión | Paciente admitido y publicado en FHIR | ✅ | pac-81147970 |
+| Cuentas | Cuenta del portal creada (origen ADMISION, clave temporal) | ✅ | 81147970 |
 | Médico | Diagnostico guardado con código de verificación | ✅ | entregado |
 | Médico | Formula guardado con código de verificación | ✅ | entregado |
 | Médico | Egreso guardado con código de verificación | ✅ | entregado |
@@ -91,5 +91,12 @@ Ejecutado el 2026-11-11 08:51 contra `http://192.168.1.94:8000` (script `scripts
 | Seguridad | Paciente que pide la historia de otro = 403 | ✅ | 403 |
 | Seguridad | Admisionista que pide una historia clínica = 403 | ✅ | 403 |
 | Seguridad | Administrador de sede 2 no puede crear usuarios en la sede 1 | ✅ | 403 |
-| Auditoría | Cadena SHA-256 íntegra | ✅ | 69 eventos |
+| Auditoría | Cadena SHA-256 íntegra | ✅ | 279 eventos |
+| OAuth 2.0 | client_credentials emite token para el bus | ✅ |  |
+| OAuth 2.0 | Secreto de cliente incorrecto = 401 invalid_client | ✅ | 401 |
+| OAuth 2.0 | Bus sin token = 401 | ✅ | 401 |
+| OAuth 2.0 | Token de usuario (audiencia api) rechazado por el bus = 401 | ✅ | 401 |
+| OAuth 2.0 | Sistema de la sede 1 no puede escribir en la sede 3 = 403 | ✅ | 403 |
+| OAuth 2.0 | Monitor de mensajes sin token = 401 | ✅ | 401 |
+| Cifrado en tránsito | API, bus y FHIR por HTTPS verificado con la CA propia | ✅ | https + certs/ca.pem |
 | Salud | Bus, HAPI y las 3 sedes UP | ✅ | {"sede_1": {"motor": "postgresql", "estado": "UP"}, "sede_2": {"motor": "mongodb", "estado": "UP"}, "sede_3": {"motor": "postgresql", "estado": "UP"}} |
