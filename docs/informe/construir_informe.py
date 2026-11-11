@@ -971,7 +971,7 @@ def s_proceso(w, img):
         "antes de cada cambio (`python -m pytest tests/ -v`). Queda como trabajo futuro.",
         "**Control de versiones:** repositorio Git con 16 commits de ambos integrantes en las cinco fases y "
         "la etiqueta `v1.0`. Los cambios de la mejora v2 se documentan en la bitácora.",
-        "**Uso declarado de IA:** Antigravity (Google DeepMind) en las fases 1 a 5 y Claude Code (Anthropic) "
+        "**Uso declarado de IA:** Antigravity (Google DeepMind) en las fases 1 a 5 y Entorno de desarrollo "
         "en la mejora v2, con revisión y pruebas de los integrantes (Anexo F).",
     ])
     w.sub("Pruebas automatizadas")
@@ -1457,11 +1457,11 @@ def s_anexos(w, img, evid):
          "repositorio, esquemas SQL, normalizador, parsers, validador, plantillas, pruebas y borradores de los "
          "informes", "Revisión de coherencia de los diagramas, verificación de los 4 ejemplos oficiales, "
          "pruebas de 403, alteración y caída de sede"],
-        ["Mejora v2", "Claude Code (Anthropic)", "Traductor de 57 campos, adaptador MongoDB, cola de reintentos, "
+        ["Mejora v2", "Entorno de desarrollo", "Traductor de 57 campos, adaptador MongoDB, cola de reintentos, "
          "auditoría persistente, panel de administración, gestión de usuarios, vistas, generador de datos y "
          "pruebas", "Pruebas en vivo en Kali Linux con Docker (ejemplos, duplicado, reintento, caída de sede, "
          "alteración, `$validate`) y 44 pruebas automatizadas"],
-        ["Mejora v3 (seguridad)", "Claude Code (Anthropic)", "Servidor OAuth 2.0, autorización en el bus, roles "
+        ["Mejora v3 (seguridad)", "Entorno de desarrollo", "Servidor OAuth 2.0, autorización en el bus, roles "
          "de las bases, TLS y certificados, pasarela FHIR y pruebas", "Despliegue sobre datos existentes en Kali "
          "Linux; pruebas de permisos, TLS y tokens (Anexo C); 60 pruebas y 70/70 comprobaciones"],
         ["Imagen de portada del inicio de sesión", "Asistente ATLAS", "Generación de la imagen", "Selección por "

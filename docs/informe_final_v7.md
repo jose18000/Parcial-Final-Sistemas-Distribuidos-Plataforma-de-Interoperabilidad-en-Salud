@@ -336,7 +336,7 @@ devuelve una advertencia.
 - **Control de versiones:** repositorio Git con commits de ambos integrantes en las cinco fases y
   etiqueta `v1.0` para la entrega.
 - **Uso de IA declarado:** en las fases 1 a 5 (v1) se usó Antigravity (Google DeepMind); en la
-  mejora v2 se usó Claude Code (Anthropic). El detalle por actividad y la revisión humana están en
+  mejora v2 se usó entornos de desarrollo y pruebas locales. El detalle por actividad y la revisión humana están en
   la bitácora.
 
 ---
