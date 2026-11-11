@@ -43,11 +43,11 @@ Presenta A (Jose), mientras el servidor FHIR termina de arrancar (bloque 1 del g
   (pg_sede3). El bus de integración (contenedor hsb_bus, puerto 8001) recibe HL7, CSV y
   JSON, traduce al registro de 57 campos, valida, evita duplicados y reintenta. Primero
   publica en el servidor FHIR (contenedor hapi_fhir_r4, puerto 8090) y después guarda en
-  la sede. El portal web y API (contenedor api_gateway, puerto 8000) valida el token de
-  sesión y los permisos y sirve las cuatro vistas; la consulta unificada pregunta a las
-  tres sedes en paralelo. La base central (contenedor pg_central) guarda la auditoría
-  encadenada y las cuentas. Regla de oro: ninguna vista habla con las bases; lecturas por
-  la API, escrituras por el bus.
+  la sede. El portal web y API (contenedor api_gateway, puerto 8000) emite y valida los
+  tokens OAuth 2.0 y los permisos y sirve las cuatro vistas; la consulta unificada
+  pregunta a las tres sedes en paralelo. La base central (contenedor pg_central) guarda la
+  auditoría encadenada y las cuentas. Regla de oro: ninguna vista habla con las bases;
+  lecturas por la API, escrituras por el bus.
 
   ► PREGUNTA PROBABLE DEL PROFE:
     ¿qué escalaría primero con 100 veces más mensajes?
@@ -156,14 +156,14 @@ DIAPOSITIVA 8 — Seguridad: permisos en la API, auditoría encadenada
 Presenta B (Sharith).
 --------------------------------------------------------------------------------------------
 
-  Los permisos se validan en la API, no en la pantalla: cada petición trae un token de
-  sesión (JWT) y cada ruta declara qué roles la pueden usar. Hay cuatro roles más el
-  administrador, que puede ser general o de una sola sede. Si alguien intenta algo que no
-  le toca, recibe 403 y el intento queda registrado como ACCESO_DENEGADO. La auditoría
-  vive en la base central (pg_central) y es una cadena: cada evento guarda el hash del
-  anterior y su propio hash SHA-256 sobre todos sus campos. Y al admitir a un paciente
-  nuevo se le crea su cuenta con una contraseña temporal que se muestra una sola vez; en
-  el primer ingreso debe cambiarla.
+  Los permisos se validan en la API, no en la pantalla: cada petición trae un token OAuth
+  2.0 (un JWT firmado con RS256) y cada ruta declara qué roles la pueden usar. Hay cuatro
+  roles más el administrador, que puede ser general o de una sola sede. Si alguien intenta
+  algo que no le toca, recibe 403 y el intento queda registrado como ACCESO_DENEGADO. La
+  auditoría vive en la base central (pg_central) y es una cadena: cada evento guarda el
+  hash del anterior y su propio hash SHA-256 sobre todos sus campos. Y al admitir a un
+  paciente nuevo se le crea su cuenta con una contraseña temporal que se muestra una sola
+  vez; en el primer ingreso debe cambiarla.
 
   ► PREGUNTA PROBABLE DEL PROFE:
     ¿cómo sabe que la auditoría no fue alterada?
@@ -177,7 +177,43 @@ Presenta B (Sharith).
 
 ============================================================================================
 
-DIAPOSITIVA 9 — Cuatro vistas, una por rol
+DIAPOSITIVA 9 — Seguridad: OAuth 2.0, bases de datos y cifrado
+Presenta A (Jose) la columna de OAuth; B (Sharith) las bases y el cifrado. Corresponde al paso 8 de la demo (paso 9 del documento de comandos).
+--------------------------------------------------------------------------------------------
+
+  El profe pidió autenticación 2.0, seguridad en las bases y en la información que viaja
+  entre servidores; agregamos tres capas independientes. Primera, OAuth 2.0: la API es el
+  servidor de autorización (/oauth/token) y emite tokens JWT firmados con RS256 con los
+  flujos password, client_credentials y refresh_token. El bus es un servidor de recursos:
+  verifica la firma con la clave pública que la API publica en /oauth/jwks, revisa
+  audiencia y scope, y sin token responde 401. El sistema de la sede 1 tiene un token que
+  solo sirve para su sede: si manda un CSV de la sede 3 recibe 403. Segunda, las bases:
+  antes todo entraba con el superusuario; ahora el bus entra como hsb_escritor (lee,
+  inserta y actualiza, no borra), la API como api_lector (solo lee) y en la base central
+  como api_central, que sobre la auditoría solo puede insertar y leer. Las bases no tienen
+  puertos publicados: viven en una red interna de Docker. Tercera, el cifrado: generamos
+  una autoridad certificadora propia y un certificado por servidor; todo va por HTTPS y
+  TLS 1.3, cada cliente verifica el certificado del otro y una conexión sin TLS a una base
+  se rechaza. El servidor FHIR no tiene autenticación propia, así que solo escucha dentro
+  del servidor y desde fuera se entra por la pasarela /fhir de la API con token.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    ¿por qué RS256 y no HS256?
+  ► RESPUESTA:
+    con HS256 el bus necesitaría el mismo secreto que la API para verificar, y quien lo
+    tenga puede fabricar tokens. Con RS256 la API firma con su clave privada y el bus
+    solo tiene la pública: puede verificar pero no fabricar.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    si roban la contraseña de una base, ¿qué pasa?
+  ► RESPUESTA:
+    desde fuera no sirve, porque las bases no tienen puertos publicados y exigen TLS; y
+    aun dentro, cada rol tiene lo mínimo: con la de la API no se puede escribir ni
+    alterar la auditoría.
+
+============================================================================================
+
+DIAPOSITIVA 10 — Cuatro vistas, una por rol
 Presenta A (Jose).
 --------------------------------------------------------------------------------------------
 
@@ -193,7 +229,7 @@ Presenta A (Jose).
 
 ============================================================================================
 
-DIAPOSITIVA 10 — Panel de administración en vivo
+DIAPOSITIVA 11 — Panel de administración en vivo
 Presenta B (Sharith).
 --------------------------------------------------------------------------------------------
 
@@ -208,7 +244,7 @@ Presenta B (Sharith).
 
 ============================================================================================
 
-DIAPOSITIVA 11 — Resiliencia: probada apagando piezas
+DIAPOSITIVA 12 — Resiliencia: probada apagando piezas
 Presenta B (Sharith). Corresponde a los bloques 5, 6 y 7 de la demo.
 --------------------------------------------------------------------------------------------
 
@@ -231,7 +267,7 @@ Presenta B (Sharith). Corresponde a los bloques 5, 6 y 7 de la demo.
 
 ============================================================================================
 
-DIAPOSITIVA 12 — Resultados medidos
+DIAPOSITIVA 13 — Resultados medidos
 Presenta A (Jose).
 --------------------------------------------------------------------------------------------
 
@@ -241,11 +277,12 @@ Presenta A (Jose).
   de 1001, desde tres sedes y dos motores, 52 de 57, siempre con el 100 % de los
   obligatorios. Reenviar el ejemplo 01 dejó un solo Patient 1007. La demo de ACID en
   PostgreSQL (db/demo_acid.sql) hace rollback completo cuando se viola un CHECK. Pasan las
-  44 pruebas automatizadas. Para las capturas cargamos 148 mensajes: 135 entregados, 8
-  rechazados a propósito y 5 duplicados. Y el UPDATE sobre la auditoría se detectó en el
-  índice 3. Lo que no medimos de forma sistemática es la latencia y los mensajes por
-  minuto bajo carga; los contadores de /metrics son de una sesión de demo, no una prueba
-  de carga.
+  60 pruebas automatizadas: las 44 de antes y 16 de OAuth 2.0. El verificador sede por
+  sede da 70 de 70: 63 de interoperabilidad y 7 de seguridad. Para las capturas cargamos
+  148 mensajes: 135 entregados, 8 rechazados a propósito y 5 duplicados. Y el UPDATE sobre
+  la auditoría se detectó en el índice 3. Lo que no medimos de forma sistemática es la
+  latencia y los mensajes por minuto bajo carga; los contadores de /metrics son de una
+  sesión de demo, no una prueba de carga.
 
   ► PREGUNTA PROBABLE DEL PROFE:
     ¿cómo se calcula la cobertura?
@@ -256,21 +293,24 @@ Presenta A (Jose).
 
 ============================================================================================
 
-DIAPOSITIVA 13 — Guion de la demostración en vivo
+DIAPOSITIVA 14 — Guion de la demostración en vivo
 Presentan A y B. Esta diapositiva queda de fondo como mapa de la demo.
 --------------------------------------------------------------------------------------------
 
+  Todo va por HTTPS y el bus exige token: al empezar, source scripts/sesion_demo.sh deja
+  $CURL y $TOKEN. Los comandos exactos están en el documento de comandos de clase.
+
   PASOS DE LA DEMO:
-    • 1 (A): docker compose down -v && docker compose up -d --build; docker compose ps;
-      curl -s http://localhost:8001/health | jq.
-    • 2 (B): entrar como auditor_elena en localhost:8000/login y abrir
-      localhost:8000/reporte?pestana=tablero: cobertura FHIR 0 %.
-    • 3 (A): POST /hsb/hl7 con ejemplos 01, 02 y 03 y POST /hsb/csv?sede=3 con el
-      ejemplo 04 (3 entregados, 2 rechazados); la cobertura sube: sede 1 50 %, sede 2
-      33,3 %, sede 3 75 %.
-    • 4 (B): reenviar el ejemplo 01 → duplicado; curl
-      "localhost:8090/fhir/Patient?identifier=1007&_summary=count" da 1, y
-      countDocuments en mongo_sede2 da 1.
+    • 1 (A): bash desplegar.sh --desde-cero; docker compose ps; $CURL
+      https://localhost:8001/health.
+    • 2 (B): entrar como auditor_elena en https://localhost:8000 y abrir la sección FHIR
+      del panel: cobertura FHIR 0 %.
+    • 3 (A): POST /hsb/hl7 (con -H "Authorization: Bearer $TOKEN") con ejemplos 01, 02 y
+      03 y POST /hsb/csv?sede=3 con el ejemplo 04 (3 entregados, 2 rechazados); la
+      cobertura sube: sede 1 50 %, sede 2 33,3 %, sede 3 75 %.
+    • 4 (B): reenviar el ejemplo 01 → duplicado; $CURL
+      "https://localhost:8090/fhir/Patient?identifier=1007&_summary=count" da 1, y
+      countDocuments en mongo_sede2 (con --tls) da 1.
     • Intercalado (A): docker compose stop hapi-fhir, enviar
       tests/datos/06_adt_a03_57_campos_sede1.hl7 (queda reintentando) y docker compose
       start hapi-fhir.
@@ -279,31 +319,37 @@ Presentan A y B. Esta diapositiva queda de fondo como mapa de la demo.
     • 6 (B): como paciente_carlos abrir /api/pacientes/1002/historia → 403; docker exec
       -it pg_central psql -U clinica_user -d clinica_central -c "UPDATE evento_auditoria
       SET usuario_sistema='intruso' WHERE indice = 3"; el tablero marca el índice 3.
-    • 7 (A+B): A abre localhost:8000/reporte?buscar_doc=1001 (3 sedes, 52/57, sello); B
-      registra un diagnóstico CIE-10 como médico y muestra el sello.
+    • 7 (A+B): A abre https://localhost:8000/reporte?buscar_doc=1001 (3 sedes, 52/57,
+      sello); B registra un diagnóstico CIE-10 como médico y muestra el sello.
+    • 8 (A+B): A muestra OAuth (metadatos, token del médico decodificado, bus sin token
+      = 401, sede 1 escribiendo en la sede 3 = 403); B corre bash
+      scripts/demo_seguridad_bd.sh (permisos denegados, sin TLS rechazado, conexiones
+      TLS 1.3) y openssl s_client contra el bus.
 
   ► SI ALGO FALLA:
 
-  si el mensaje de 57 campos queda MUERTO, curl -X POST
-  localhost:8001/hsb/reencolar/MSG-0057; si el ejemplo 01 sale duplicado la primera vez,
-  faltó el down -v.
+  si el mensaje de 57 campos queda MUERTO, $CURL -H "Authorization: Bearer $TOKEN" -X POST
+  https://localhost:8001/hsb/reencolar/MSG-0057; si el bus responde 401 expired, repetir
+  source scripts/sesion_demo.sh; si el ejemplo 01 sale duplicado la primera vez, faltó el
+  --desde-cero.
 
 ============================================================================================
 
-DIAPOSITIVA 14 — Limitaciones y trabajo futuro
+DIAPOSITIVA 15 — Limitaciones y trabajo futuro
 Presenta A (Jose).
 --------------------------------------------------------------------------------------------
 
   Queremos ser honestos con lo que el prototipo no resuelve. MongoDB corre sin replica
-  set: no hay conmutación por fallo ni transacciones multi-documento. El bus de
-  integración (hsb_bus, puerto 8001) no exige autenticación; solo el portal y API la
-  exige. Hay un solo servidor FHIR (hapi_fhir_r4); ya guarda sus datos en PostgreSQL
-  dentro de la base central, así que no se pierden al reiniciar, pero no tiene réplica. No
-  medimos latencia ni mensajes por minuto con una prueba de carga. Y aunque dejamos
-  manifiestos de Kubernetes para Minikube (infra/k8s), no presentamos evidencia de que
-  corran. El trabajo futuro sale directo de esa lista: replica set, Keycloak con TLS,
-  varios servidores FHIR sobre PostgreSQL, una prueba de carga y un pipeline de CI que
-  corra las 44 pruebas.
+  set: no hay conmutación por fallo ni transacciones multi-documento. La seguridad usa un
+  servidor OAuth propio con el flujo password, que OAuth 2.1 desaconseja, y una autoridad
+  certificadora propia que los navegadores no conocen; los secretos van en un archivo
+  .env. Hay un solo servidor FHIR (hapi_fhir_r4), ya guardado en PostgreSQL pero sin
+  réplica, y las bases no están cifradas en reposo. No medimos latencia ni mensajes por
+  minuto con una prueba de carga. Y aunque dejamos manifiestos de Kubernetes para Minikube
+  (infra/k8s), no presentamos evidencia de que corran. El trabajo futuro sale directo de
+  esa lista: replica set, un proveedor OIDC como Keycloak con PKCE, TLS mutuo y un gestor
+  de secretos como Vault, varios servidores FHIR, una prueba de carga y un pipeline de CI
+  que corra las 60 pruebas.
 
   ► PREGUNTA PROBABLE DEL PROFE:
     ¿qué pasa si alguien con acceso a la base central rehace toda la cadena?
@@ -313,16 +359,18 @@ Presenta A (Jose).
 
 ============================================================================================
 
-DIAPOSITIVA 15 — Cierre
+DIAPOSITIVA 16 — Cierre
 Presenta B (Sharith).
 --------------------------------------------------------------------------------------------
 
   Para cerrar: un catálogo de 57 campos, un registro común y entregas que no duplican
   bastaron para unificar tres sedes con motores distintos, sin transacción distribuida y
-  sin tocar los sistemas legados. La demo está corriendo en http://192.168.1.94:8000 y el
-  código está en github.com/jose18000/Parcial-Final-Sistemas-Distribuidos-Plataforma-de-
-  Interoperabilidad-en-Salud con la etiqueta v1.0; el README tiene todos los pasos y los
-  usuarios de prueba. Gracias. Quedamos atentos a sus preguntas; las respondemos los dos.
+  sin tocar los sistemas legados; y con OAuth 2.0, roles mínimos y TLS, esa información
+  viaja y se guarda protegida. La demo está corriendo en https://localhost:8000 (en la red
+  local, con la IP del PC) y el código está en github.com/jose18000/Parcial-Final-
+  Sistemas-Distribuidos-Plataforma-de-Interoperabilidad-en-Salud con la etiqueta v1.0; el
+  README tiene todos los pasos y los usuarios de prueba. Gracias. Quedamos atentos a sus
+  preguntas; las respondemos los dos.
 
   ► REPARTO DE PREGUNTAS:
 

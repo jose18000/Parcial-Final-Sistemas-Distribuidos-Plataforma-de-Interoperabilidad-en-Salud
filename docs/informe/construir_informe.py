@@ -356,15 +356,16 @@ RESUMEN = (
     "Se implementó un bus de servicios de salud (HSB) en FastAPI que recibe HL7 v2, CSV y JSON, los "
     "traduce con un catálogo de los 57 campos de la Resolución 866 de 2021 a un registro canónico, los "
     "valida y los entrega como Bundle FHIR R4 a HAPI FHIR y a la base de la sede: PostgreSQL en Sincelejo "
-    "y Corozal, MongoDB en Cartagena. Una API con JWT, roles y un panel de administración consulta las tres "
-    "sedes en paralelo y registra cada acceso en una cadena de auditoría SHA-256. En una máquina virtual "
-    "Kali Linux, el sistema arrancó desde cero con un comando; el mensaje HL7 de prueba cubrió 56 de 57 campos y el 100 % de los "
+    "y Corozal, MongoDB en Cartagena. Una API con OAuth 2.0, roles y un panel de administración "
+    "consulta las sedes en paralelo y registra cada acceso en una cadena de auditoría SHA-256; el tráfico "
+    "va cifrado con TLS y cada servicio usa un rol de mínimo privilegio. En una máquina virtual "
+    "Kali Linux, el mensaje HL7 de prueba cubrió 56 de 57 campos y el 100 % de los "
     "obligatorios; la historia del paciente 1001 reunió 52 de 57 campos desde dos motores y su Bundle de "
     "26 recursos validó en HAPI sin errores. Reenviar un mensaje no creó duplicados; con HAPI apagado, el "
     "mensaje se entregó solo tras 7 intentos (unos 130 s); al detener la sede MongoDB, la consulta respondió "
-    "con dos sedes y marcó el reporte incompleto; el verificador señaló el evento alterado. Pasaron 44 "
-    "pruebas automatizadas. Un modelo canónico y entregas idempotentes permiten integrar motores "
-    "heterogéneos sin transacciones distribuidas."
+    "con dos sedes y marcó el reporte incompleto; el verificador señaló el evento alterado. Pasaron 60 "
+    "pruebas automatizadas. Un modelo canónico y entregas idempotentes integran motores heterogéneos "
+    "sin transacciones distribuidas."
 )
 
 ABSTRACT = (
@@ -374,20 +375,21 @@ ABSTRACT = (
     "systems. A health service bus (HSB) written in FastAPI receives HL7 v2, CSV and JSON, translates them "
     "through a single catalogue of the 57 fields of Colombian Resolution 866 of 2021 into a canonical "
     "record, validates them and delivers them as FHIR R4 transaction Bundles to HAPI FHIR and to each "
-    "site's database (PostgreSQL in two sites, MongoDB in the third). An API with JWT, four clinical roles "
-    "and an administration panel serves the role-based views, queries the three sites in parallel and logs "
-    "every access in a SHA-256 hash chain. On a Kali Linux virtual machine with 3.8 GB of RAM, the full test "
+    "site's database (PostgreSQL in two sites, MongoDB in the third). An API with OAuth 2.0 (RS256 tokens), "
+    "four clinical roles and an administration panel serves the role-based views, queries the three sites in "
+    "parallel and logs every access in a SHA-256 hash chain; traffic between servers is encrypted with TLS "
+    "and each service uses its own least-privilege database role. On a Kali Linux virtual machine with 3.8 GB of RAM, the full test "
     "HL7 message covered 56 of 57 fields; patient 1001 gathered 52 of 57 fields from two database engines and "
     "his 26-resource Bundle validated in HAPI with no errors. Resending a message created no duplicates; with "
     "HAPI down, the message was delivered automatically after 7 attempts (about 130 s); with the MongoDB site stopped, the "
     "query answered with two sites and flagged the report as incomplete; the verifier pointed to the altered "
-    "audit event. All 44 automated tests passed."
+    "audit event. All 60 automated tests and 70 of 70 per-site checks passed."
 )
 
 PALABRAS_CLAVE = ("**Palabras clave:** sistemas distribuidos, interoperabilidad clínica, HL7 v2, FHIR R4, "
-                  "Resolución 866 de 2021, MongoDB, teorema CAP, idempotencia.")
+                  "Resolución 866 de 2021, MongoDB, teorema CAP, idempotencia, OAuth 2.0.")
 KEYWORDS = ("**Keywords:** distributed systems, clinical interoperability, HL7 v2, FHIR R4, Resolution 866 "
-            "of 2021, MongoDB, CAP theorem, idempotency.")
+            "of 2021, MongoDB, CAP theorem, idempotency, OAuth 2.0.")
 
 REFERENCIAS = [
     "Bender, D., & Sartipi, K. (2013). HL7 FHIR: An agile and RESTful approach to healthcare information "
@@ -409,6 +411,8 @@ REFERENCIAS = [
     "Healthcare.",
     "OpenHIE Consortium. (2022). *Open Health Information Mediator (OpenHIM) architecture specification*. "
     "Jembi Health Systems.",
+    "Hardt, D. (Ed.). (2012). *The OAuth 2.0 authorization framework* (RFC 6749). Internet Engineering Task "
+    "Force. https://doi.org/10.17487/RFC6749",
     "Tanenbaum, A. S., & Van Steen, M. (2017). *Distributed systems* (3.ª ed.). Maarten van Steen.",
 ]
 
@@ -655,15 +659,18 @@ def s_solucion(w, img):
                            "traductor de 57 campos, HAPI FHIR R4, API Gateway con las vistas por rol y base "
                            "central de auditoría y cuentas.", alto_max_cm=13)
     w.tabla(["Contenedor", "Papel", "Puerto"], [
-        ["`pg_sede1`", "Sede 1 Sincelejo — PostgreSQL 16 (`clinica_sincelejo`)", "5433"],
-        ["`mongo_sede2`", "Sede 2 Cartagena — MongoDB 7 (`clinica_cartagena`), un documento por paciente", "27018"],
-        ["`pg_sede3`", "Sede 3 Corozal — PostgreSQL 16 (`clinica_corozal`)", "5435"],
-        ["`pg_central`", "Base central: cadena de auditoría (`evento_auditoria`) y cuentas de usuario "
-         "(`usuario_sistema`). No guarda datos clínicos.", "5436"],
-        ["`hapi_fhir_r4`", "HAPI FHIR R4 v7.2.0", "8090"],
-        ["`hsb_bus`", "Health Service Bus (FastAPI)", "8001"],
-        ["`api_gateway`", "API Gateway, vistas por rol y panel de administración (FastAPI + Jinja2)", "8000"],
-    ], anchos=[3, 10, 2], titulo="Contenedores de la plataforma.", centrar_cols=(2,))
+        ["`pg_sede1`", "Sede 1 Sincelejo — PostgreSQL 16 (`clinica_sincelejo`)", "Interno"],
+        ["`mongo_sede2`", "Sede 2 Cartagena — MongoDB 7 (`clinica_cartagena`), un documento por paciente", "Interno"],
+        ["`pg_sede3`", "Sede 3 Corozal — PostgreSQL 16 (`clinica_corozal`)", "Interno"],
+        ["`pg_central`", "Base central: cadena de auditoría (`evento_auditoria`), cuentas de usuario "
+         "(`usuario_sistema`), refresh tokens OAuth y base de HAPI. No guarda datos clínicos de las sedes.",
+         "Interno"],
+        ["`hapi_fhir_r4`", "HAPI FHIR R4 v7.2.0, persistido en PostgreSQL", "8090 (solo local)"],
+        ["`hsb_bus`", "Health Service Bus (FastAPI); exige token OAuth 2.0", "8001 HTTPS"],
+        ["`api_gateway`", "API Gateway, servidor OAuth 2.0, vistas por rol y panel de administración "
+         "(FastAPI + Jinja2)", "8000 HTTPS"],
+    ], anchos=[3, 9.4, 2.6], titulo="Contenedores de la plataforma. Las bases viven en una red interna sin "
+       "puertos publicados.", centrar_cols=(2,))
     w.p("**Regla de oro.** Ninguna vista habla directo con las bases de las sedes. Las lecturas pasan por la "
         "consulta unificada de la API; las escrituras (admisión, diagnóstico, fórmula, egreso) viajan al HSB "
         "por `/hsb/json` y siguen el mismo camino que un mensaje HL7. El diagrama editable está en Mermaid en "
@@ -676,8 +683,9 @@ def s_solucion(w, img):
         "**Datos:** PostgreSQL 16 (sedes 1 y 3, base central), MongoDB 7 (sede 2), con psycopg2 y PyMongo.",
         "**Estándares:** HL7 v2.5 (ADT^A01, ADT^A03, ORU^R01, RDE^O11), FHIR R4 en HAPI FHIR 7.2.0, CIE-10 y "
         "LOINC.",
-        "**Seguridad:** JWT HS256, contraseñas PBKDF2-SHA256 (200 000 iteraciones, sal por usuario), SHA-256 "
-        "para la cadena de auditoría.",
+        "**Seguridad:** OAuth 2.0 con tokens JWT firmados con RS256 (python-jose y cryptography), HTTPS y TLS "
+        "1.3 con una autoridad certificadora propia (OpenSSL), SCRAM-SHA-256 en las bases, contraseñas "
+        "PBKDF2-SHA256 (200 000 iteraciones, sal por usuario) y SHA-256 para la cadena de auditoría.",
         "**Despliegue y pruebas:** Docker Compose; manifiestos de Kubernetes para Minikube en `infra/k8s/`; "
         "`pytest`. Diagramas en Mermaid.",
     ])
@@ -733,7 +741,9 @@ def s_solucion(w, img):
 
     w.h("Seguridad, cuentas de usuario y panel de administración")
     w.vinetas([
-        "**JWT HS256** de 60 minutos emitido en `/auth/login`; viaja en cookie para las vistas o como `Bearer`.",
+        "**Token OAuth 2.0** (JWT RS256) de 60 minutos emitido en `/auth/login` o en `/oauth/token`; viaja "
+        "en cookie (`HttpOnly`, `Secure`) para las vistas o como `Bearer`. El detalle está en la subsección "
+        "siguiente.",
         "**Roles validados en la API:** paciente (solo su historia), admisionista (búsqueda y admisión, sin "
         "diagnósticos), médico (historia unificada y escrituras clínicas), auditor (reporte, tablero y "
         "verificador; en el panel solo consulta) y administrador. Un acceso no permitido responde 403 y "
@@ -755,6 +765,86 @@ def s_solucion(w, img):
         "determinista y no crea copias si se repite.",
     ])
 
+    w.h("Seguridad v3: OAuth 2.0, bases de datos y cifrado entre servidores")
+    w.p("A pedido del docente se agregaron tres capas de seguridad. Cada una es independiente de las otras: un "
+        "atacante que pase una tiene que pasar también las demás.")
+    w.sub("Autenticación y autorización con OAuth 2.0")
+    w.p("La API es el servidor de autorización (`app/oauth.py`) y el HSB es un servidor de recursos "
+        "(`hsb/autorizacion.py`). Los tokens son JWT firmados con RS256: la API firma con su clave privada y el "
+        "bus verifica con la clave pública que la API publica en `/oauth/jwks`, así que no comparten ningún "
+        "secreto. Cada token lleva emisor (`iss`), audiencia (`aud`), vencimiento, identificador único (`jti`) y "
+        "los `scope` que autoriza (Hardt, 2012).")
+    w.tabla(["Endpoint", "Estándar", "Para qué"], [
+        ["`POST /oauth/token`", "RFC 6749", "Emite tokens con los flujos `password` (usuario), `client_credentials` "
+         "(servicio a servicio) y `refresh_token` (renovación con rotación)"],
+        ["`GET /oauth/jwks`", "RFC 7517", "Clave pública RSA para verificar las firmas"],
+        ["`POST /oauth/introspect`", "RFC 7662", "Dice si un token está activo y qué contiene"],
+        ["`POST /oauth/revoke`", "RFC 7009", "Revoca un refresh token"],
+        ["`GET /.well-known/oauth-authorization-server`", "RFC 8414", "Metadatos del servidor"],
+    ], anchos=[5.4, 2.2, 7.4], titulo="Endpoints del servidor de autorización OAuth 2.0.", tam=8.5)
+    w.tabla(["Cliente", "Flujo", "Scopes y audiencia", "Uso"], [
+        ["`portal_web`", "password, refresh_token", "Los del rol del usuario; `aud = api`", "Inicio de sesión de las "
+         "vistas web"],
+        ["`api_gateway`", "client_credentials", "`hsb.ingesta hsb.admin`; `aud = hsb`", "La API escribe en el bus"],
+        ["`sistema_sede1` a `sistema_sede3`", "client_credentials", "`hsb.ingesta`; `aud = hsb`; `sede_id`",
+         "Sistema legado de cada sede: solo envía mensajes de su sede"],
+        ["`herramientas_qa`", "password, client_credentials, refresh_token", "`hsb.ingesta hsb.admin`",
+         "Postman, scripts de carga y de verificación"],
+    ], anchos=[3.4, 3.2, 4.4, 4], titulo="Clientes OAuth 2.0 registrados.", tam=8.5)
+    w.vinetas([
+        "**El bus exige token.** `/hsb/hl7`, `/hsb/csv` y `/hsb/json` piden el scope `hsb.ingesta`; "
+        "`/hsb/mensajes`, `/hsb/reencolar` y `/hsb/migrar` piden `hsb.admin`. Sin token responde 401 con "
+        "`WWW-Authenticate: Bearer` (RFC 6750); con un scope insuficiente, 403 `insufficient_scope`. `/health`, "
+        "`/metrics` y `/hsb/catalogo` siguen abiertos porque no tienen datos de pacientes.",
+        "**Audiencia separada.** Un token de usuario (`aud = api`) no sirve en el bus, y uno de servicio "
+        "(`aud = hsb`) no sirve en la API.",
+        "**Restricción por sede.** El token de `sistema_sede1` lleva `sede_id = 1`; si intenta enviar un CSV de "
+        "la sede 3, el bus responde 403.",
+        "**Refresh tokens.** Son opacos y en `pg_central.token_refresco` se guarda solo su hash SHA-256; al usarse "
+        "se revocan y se emite uno nuevo (rotación).",
+        "**Pasarela FHIR.** HAPI FHIR no tiene autenticación propia, así que no se publica a la red: quien "
+        "necesita FHIR desde fuera entra por `/fhir/...` de la API con un token de médico, auditor o "
+        "administrador, y cada acceso queda en la auditoría.",
+    ])
+    w.sub("Seguridad de las bases de datos")
+    w.p("Antes, la API y el bus entraban a todas las bases con el superusuario. Ahora cada servicio tiene su "
+        "propio rol con los permisos justos (`db/seguridad/`). Los roles se crean al iniciar una base vacía y "
+        "`desplegar.sh` los vuelve a aplicar sobre bases existentes.")
+    w.tabla(["Base", "Rol", "Permisos", "Lo que no puede hacer"], [
+        ["Sedes PostgreSQL", "`hsb_escritor` (bus)", "SELECT, INSERT, UPDATE", "DELETE, TRUNCATE, cambiar la "
+         "estructura"],
+        ["Sedes PostgreSQL", "`api_lector` (API)", "SELECT", "Escribir: las escrituras van por el bus"],
+        ["Sede 2 MongoDB", "`hsb_escritor`", "Rol `escritor_sin_borrado`: find, insert, update", "remove, "
+         "dropCollection"],
+        ["Sede 2 MongoDB", "`api_lector`", "Rol `solo_lectura`: find", "insert, update, remove"],
+        ["Central", "`api_central` (API)", "Auditoría: SELECT e INSERT; cuentas y refresh tokens: SELECT, "
+         "INSERT, UPDATE", "Modificar o borrar la auditoría (solo agregar)"],
+        ["Central (base `hapi`)", "`hapi_srv` (HAPI)", "Dueño de su base", "Entrar a `clinica_central`"],
+    ], anchos=[3, 3.2, 4.6, 4.2], titulo="Roles de mínimo privilegio por base.", tam=8.5)
+    w.vinetas([
+        "**Sin exposición.** Las cuatro bases están en la red Docker interna `red_datos` (sin salida ni puertos "
+        "en el anfitrión); HAPI solo escucha en `127.0.0.1`.",
+        "**TLS obligatorio.** PostgreSQL rechaza cualquier conexión de red sin cifrado (`pg_hba.conf` con "
+        "`hostssl` y `reject`) y autentica con SCRAM-SHA-256; MongoDB corre con `requireTLS`. El superusuario "
+        "solo se usa desde dentro del contenedor, como DBA.",
+        "**Auditoría de solo agregar.** Como la aplicación no puede hacer UPDATE ni DELETE sobre "
+        "`evento_auditoria`, la única forma de alterarla es como DBA, y el verificador de la cadena lo detecta.",
+        "**Secretos fuera del código.** Las contraseñas de los roles van en `.env` (no versionado); "
+        "`desplegar.sh` las genera aleatorias al crearlo.",
+    ])
+    w.sub("Cifrado de la información entre servidores")
+    w.p("`scripts/generar_certificados.sh` crea una autoridad certificadora propia y un certificado por servidor, "
+        "con los nombres de red de cada contenedor. Todos los clientes verifican el certificado del otro contra "
+        "esa CA, así que un tercero no puede hacerse pasar por un servicio.")
+    w.tabla(["Tramo", "Protocolo", "Verificación"], [
+        ["Navegador o Postman → API y HSB", "HTTPS (TLS 1.3)", "Certificado con las IP y nombres del servidor"],
+        ["API → HSB (escrituras, migración, monitor)", "HTTPS + token `client_credentials`", "CA propia + JWT RS256"],
+        ["HSB y API → HAPI FHIR", "HTTPS (Spring Boot con PKCS#12)", "CA propia"],
+        ["HSB y API → PostgreSQL de las sedes y central", "TLS 1.3, SCRAM-SHA-256", "`sslmode=verify-full`"],
+        ["HSB y API → MongoDB", "TLS (`requireTLS`)", "CA propia"],
+        ["HAPI → base `hapi`", "TLS", "`sslmode=require`"],
+    ], anchos=[5.8, 4.4, 4.8], titulo="Cifrado en tránsito por tramo de comunicación.", tam=8.5)
+
     w.h("Metodología y hoja de ruta")
     w.p("Se trabajó de forma iterativa en cinco fases, cada una con un entregable funcional y revisión cruzada "
         "entre los dos integrantes. Cada fase partió del código de la anterior; las correcciones entre fases "
@@ -772,6 +862,8 @@ def s_solucion(w, img):
         ["5. Prototipo final", "Vistas, informe, sustentación", "Este informe"],
         ["Mejora v2 (10 y 11 de nov.)", "Traductor de 57 campos, MongoDB, panel de administración, gestión de "
          "usuarios, generador de datos", "Implementada y probada (44 pruebas)"],
+        ["Mejora v3 seguridad (11 de nov.)", "OAuth 2.0, roles de mínimo privilegio en las bases, TLS entre "
+         "servidores", "Implementada y probada (60 pruebas, 70/70 comprobaciones)"],
     ], anchos=[3.6, 6.2, 5.2], titulo="Hoja de ruta de las fases del proyecto.")
 
 
@@ -883,7 +975,7 @@ def s_proceso(w, img):
         "en la mejora v2, con revisión y pruebas de los integrantes (Anexo F).",
     ])
     w.sub("Pruebas automatizadas")
-    w.p("Se escribieron 44 pruebas con `pytest`, organizadas por fase. Todas pasan (`44 passed`, ejecución "
+    w.p("Se escribieron 60 pruebas con `pytest`, organizadas por fase. Todas pasan (`60 passed`, ejecución "
         "local del 11 de noviembre de 2026). Además se hicieron las pruebas en vivo sobre Docker que se "
         "reportan en Resultados.")
     w.tabla(["Suite", "Pruebas", "Qué cubre"], [
@@ -897,12 +989,15 @@ def s_proceso(w, img):
          "y alteración, resiliencia"],
         ["`tests/fase4/test_usuarios.py`", "7", "Cuentas semilla, administrador de sede limitado a su sede, "
          "auditor de solo lectura, contraseña temporal y cambio obligatorio, cuenta del paciente al admitir"],
-        ["**Total**", "**44**", ""],
+        ["`tests/fase5/test_oauth_seguridad.py`", "16", "OAuth 2.0: flujos password, client_credentials y "
+         "refresh con rotación, errores del RFC 6749, JWKS, introspección y revocación; el bus rechaza tokens sin "
+         "firma válida, vencidos, de otra audiencia o de otra sede"],
+        ["**Total**", "**60**", ""],
     ], anchos=[5.4, 1.6, 8], titulo="Pruebas automatizadas por suite.", centrar_cols=(1,))
 
 
 def s_interfaces(w, img):
-    w.p("Las vistas son plantillas Jinja2 servidas por la API en `http://localhost:8000`. Comparten un marco "
+    w.p("Las vistas son plantillas Jinja2 servidas por la API en `https://localhost:8000`. Comparten un marco "
         "común (barra superior con la red de IPS, el usuario y su rol) y solo muestran las opciones que el "
         "rol puede usar; aun así, los permisos se validan en la API y no en la pantalla. Las capturas se "
         "tomaron el 11 de noviembre de 2026 sobre la plataforma desplegada con Docker, con datos sintéticos, "
@@ -1044,8 +1139,11 @@ def s_prototipo(w, img):
          "`hsb/`; con HAPI apagado, entregado tras 7 intentos sin duplicar"],
         ["RF4 Datos distribuidos", "Un nodo por sede y consulta unificada", "Cumplido, con motores distintos",
          "`pg_sede1`, `mongo_sede2`, `pg_sede3`; `db/consulta_unificada.py`"],
-        ["RF5 Seguridad", "Token, roles y auditoría encadenada", "Cumplido (Fabric no)", "`app/auth.py`, "
-         "`app/rbac.py`, `app/audit.py`, `app/usuarios.py`, `pg_central`" + ref("403")],
+        ["RF5 Seguridad", "Token, roles y auditoría encadenada", "Cumplido con OAuth 2.0 (Fabric no)",
+         "`app/oauth.py`, `app/rbac.py`, `app/audit.py`, `hsb/autorizacion.py`, `pg_central`" + ref("403")],
+        ["Seguridad v3 (docente)", "Autenticación 2.0, seguridad en las bases y en la comunicación entre "
+         "servidores", "Cumplido", "OAuth 2.0 RS256; roles de mínimo privilegio; TLS 1.3 y HTTPS con CA propia "
+         "(Anexo C, `08_seguridad_oauth_bd_tls.txt`)"],
         ["RF6 Vistas", "Paciente, Admisionista, Médico, Reporte de HC con tablero", "Cumplido (más panel de "
          "administración)", "`app/main.py`, `app/templates/`; Figuras de la sección de interfaces"],
         ["RNF Un comando", "`docker compose up` levanta todo", "Cumplido", "HAPI responde a los 85–95 s"],
@@ -1114,8 +1212,33 @@ def s_resultados(w, img, evid):
         ["ACID en PostgreSQL (`db/demo_acid.sql`)", "Violación de `CHECK` en `clasificacion_triage` → rollback "
          "completo, sin usuario huérfano"],
         ["Reinicio del bus con mensajes pendientes", "Recuperó 2 mensajes pendientes y los entregó"],
-        ["Pruebas automatizadas", "44 de 44 pasan (8,78 s)"],
+        ["Pruebas automatizadas", "60 de 60 pasan"],
     ], anchos=[6.2, 8.8], titulo="Resultados medidos en las pruebas en vivo.", tam=8.5)
+
+    w.h("Pruebas de seguridad")
+    w.p("Se ejecutaron el 11 de noviembre de 2026 sobre la plataforma desplegada con `desplegar.sh`, conservando "
+        "los datos existentes (la seguridad se aplicó sobre bases que ya tenían pacientes). La salida completa "
+        "está en el Anexo C.")
+    w.tabla(["Prueba", "Resultado medido"], [
+        ["Mensaje al bus sin token", "401 con `WWW-Authenticate: Bearer`"],
+        ["Mensaje al bus con token `client_credentials`", "200 (procesado)"],
+        ["Token de usuario (`aud = api`) usado en el bus", "401: la audiencia no corresponde"],
+        ["Sistema de la sede 1 envía un CSV de la sede 3", "403 `insufficient_scope`"],
+        ["Secreto de cliente incorrecto", "401 `invalid_client`"],
+        ["Refresh token reutilizado después de rotarlo", "400 `invalid_grant`"],
+        ["`hsb_escritor` intenta `DELETE` en la sede 1", "`permission denied for table usuario`"],
+        ["`api_lector` intenta `UPDATE` en la sede 3", "`permission denied`; la lectura sí funciona"],
+        ["`api_central` intenta `UPDATE` y `DELETE` en la auditoría", "`permission denied for table evento_auditoria`"],
+        ["MongoDB: `api_lector` inserta, `hsb_escritor` borra", "`not authorized` en ambos casos"],
+        ["Conexión sin TLS a PostgreSQL y a MongoDB", "Rechazadas (`pg_hba.conf rejects ... no encryption`)"],
+        ["Conexiones de los servicios a las bases", "Cada servicio con su rol y `SSL enabled (protocol=TLSv1.3, "
+         "cipher=TLS_AES_256_GCM_SHA384)`"],
+        ["Certificado del bus", "Emitido por la CA de la plataforma; `Verify return code: 0 (ok)`; TLS 1.3"],
+        ["HAPI por HTTPS / por HTTP plano", "200 / 400"],
+        ["Verificación sede por sede (`verificar_interoperabilidad.py`)", "70 de 70 correctas (63 de "
+         "interoperabilidad y 7 de OAuth 2.0 y HTTPS)"],
+        ["Colección de Postman con Newman desde el PC anfitrión", "58 peticiones y 82 aserciones, todas correctas"],
+    ], anchos=[6.6, 8.4], titulo="Resultados de las pruebas de seguridad.", tam=8.5)
     w.p("Los ejemplos 01 (dos veces), 02, 03 y las 5 filas del CSV son 9 mensajes recibidos: 5 entregados, "
         "1 duplicado y 3 rechazados. Los 3 rechazos son los que el contrato de `ejemplos/LEEME.md` exige "
         "rechazar; ningún mensaje válido quedó MUERTO en el flujo normal.")
@@ -1171,10 +1294,13 @@ def s_resultados(w, img, evid):
         "**Cobertura de campos.** La cobertura muestra el límite de los datos y no del traductor: el mensaje "
         "completo llega a 56 de 57; la historia real de 1001 llega a 52 de 57 porque sus atenciones no traen "
         "todos los campos opcionales.",
-        "**Cobertura FHIR por sede.** No llega al 100 %, porque se mide como pacientes con recurso en HAPI sobre "
-        "pacientes de la sede, y los pacientes sembrados como legados solo se enlazan cuando llega un mensaje "
-        "suyo. La guía pide 0 % antes y 100 % después de migrar; falta un paso de migración que reenvíe a "
-        "todos los pacientes existentes por el bus.",
+        "**Cobertura FHIR por sede.** Los pacientes sembrados como legados solo se enlazan cuando llega un "
+        "mensaje suyo; por eso se agregó la migración (`POST /hsb/migrar`), que los publica en FHIR y lleva la "
+        "cobertura de 0 % a 100 % en cada sede, sin duplicar si se repite.",
+        "**Seguridad por capas.** Las tres capas se probaron por separado: un token válido no basta para borrar "
+        "datos (el rol de la base no lo permite) y una contraseña de base filtrada no sirve desde fuera (no hay "
+        "puertos publicados y se exige TLS). El costo fue pequeño: el arranque genera los certificados y la "
+        "verificación de un JWT RS256 no requiere consultar a la API en cada mensaje.",
         "**Validación FHIR.** Las 33 advertencias de `$validate` se deben a que el proyecto usa extensiones y "
         "sistemas de códigos propios que HAPI no puede resolver; no son errores de estructura. Las "
         "experiencias de Chile y Argentina usan perfiles nacionales para evitar esto (Centro Nacional en "
@@ -1199,30 +1325,34 @@ def s_conclusiones(w, img):
         "trazabilidad, y demostrar la detección de una alteración hecha directamente en la base.",
         "Validar los permisos en la API, con administradores limitados a su sede y cuentas de paciente con "
         "contraseña temporal, llevó el control de acceso del prototipo más allá de los cuatro roles mínimos.",
+        "OAuth 2.0 con firma asimétrica permitió que el bus confíe en los tokens de la API sin compartir "
+        "secretos, y junto con roles de mínimo privilegio y TLS en cada tramo protege los datos aunque una capa "
+        "falle.",
     ])
     w.h("Limitaciones")
     w.vinetas([
         "MongoDB corre sin *replica set*: sin transacciones multi-documento ni conmutación por fallo. Además, "
         "`guardar` lee el documento y lo reemplaza; dos escrituras simultáneas sobre el mismo paciente podrían "
         "pisarse (no hay control de concurrencia optimista).",
-        "Una sola instancia de HAPI FHIR, con su base embebida por defecto.",
+        "Una sola instancia de HAPI FHIR (persistida en PostgreSQL), sin réplica.",
         "Los segmentos Z (`ZPI`, `ZPV`, `ZRX`, `ZEG`) son una convención del proyecto, no un estándar nacional; "
         "los códigos REPS son sintéticos y las extensiones FHIR usan URL propias, no perfiles publicados.",
-        "Cobertura FHIR por sede sin paso de migración de los pacientes existentes.",
         "Latencia y mensajes por minuto no medidos con una prueba de carga.",
-        "Los endpoints del HSB (`:8001`) no exigen autenticación; solo la API la exige.",
-        "Las cuentas semilla tienen contraseñas de prueba documentadas y el secreto JWT es de desarrollo si no "
-        "se cambia en `.env`.",
+        "El flujo `password` de OAuth 2.0 se usa por simplicidad; OAuth 2.1 lo desaconseja y en producción se "
+        "usaría *authorization code* con PKCE.",
+        "La CA es propia: los navegadores muestran aviso hasta importarla. Los secretos van en `.env` (sin "
+        "gestor de secretos) y las bases no están cifradas en reposo.",
+        "Las cuentas semilla y los secretos de los clientes OAuth son de prueba y están documentados.",
         "No hay pipeline de CI/CD.",
     ])
     w.h("Trabajo futuro")
     w.vinetas([
         "*Replica set* de MongoDB y control de versión del documento para escrituras concurrentes.",
-        "Script de migración que pase a todos los pacientes legados por `/hsb/json` (cobertura FHIR del 100 %).",
         "Prueba de carga para medir latencia, mensajes por minuto y porcentaje de fallidos.",
-        "Keycloak u otro proveedor OIDC, TLS entre servicios y autenticación en el HSB.",
+        "Proveedor OIDC (Keycloak) con *authorization code* y PKCE, TLS mutuo entre servicios, gestor de "
+        "secretos (Vault) y cifrado en reposo de las bases.",
         "Anclaje periódico de la cadena de auditoría en Hyperledger Fabric; Prometheus y Grafana.",
-        "Pipeline de integración continua que corra las 44 pruebas en cada cambio.",
+        "Pipeline de integración continua que corra las 60 pruebas en cada cambio.",
     ])
 
 
@@ -1247,14 +1377,18 @@ def s_anexos(w, img, evid):
         ["`app/usuarios.py`", "Cuentas en `pg_central`, PBKDF2, administradores por sede, cuenta del paciente"],
         ["`app/dashboard.py`, `app/templates/`", "Panel de administración, tablero y vistas"],
         ["`scripts/generar_datos_prueba.py`", "Generador de pacientes sintéticos enviados por el bus"],
+        ["`app/oauth.py`, `hsb/autorizacion.py`, `seguridad/`", "Servidor OAuth 2.0, validación de tokens en el "
+         "bus, TLS hacia bases y servicios"],
+        ["`db/seguridad/`, `scripts/generar_certificados.sh`", "Roles de mínimo privilegio, `pg_hba.conf`, "
+         "arranque TLS de PostgreSQL y MongoDB; CA y certificados"],
     ], anchos=[6.5, 8.5], titulo="Archivos de código clave.")
 
     w.h("Anexo B. Pruebas automatizadas")
-    w.p("Las 44 pruebas (Tabla de pruebas por suite en Proceso de desarrollo) se ejecutan sin Docker:")
+    w.p("Las 60 pruebas (Tabla de pruebas por suite en Proceso de desarrollo) se ejecutan sin Docker:")
     w.codigo(["pip install -r hsb/requirements.txt -r app/requirements.txt pytest",
               "python -m pytest tests/ -v",
               "...",
-              "44 passed"])
+              "60 passed"])
     w.p("Mensaje HL7 de prueba con los 57 campos: `tests/datos/06_adt_a03_57_campos_sede1.hl7`. Guion de la "
         "demostración en vivo: `docs/guion_demostracion.md`; guía para Kali Linux: `docs/guia_kali_linux.md`.")
 
@@ -1288,20 +1422,19 @@ def s_anexos(w, img, evid):
 
     w.h("Anexo E. Cómo ejecutar")
     w.codigo([
-        "cp .env.example .env",
-        "docker compose down -v && docker compose up -d --build",
-        "docker compose ps        # HAPI tarda unos 90 s en responder",
+        "bash desplegar.sh --desde-cero --con-datos --verificar   # certificados, roles, servicios y 70/70",
         "",
-        "# Vistas: http://localhost:8000   HSB: http://localhost:8001   HAPI: http://localhost:8090/fhir",
+        "# Vistas: https://localhost:8000   HSB: https://localhost:8001   HAPI (solo local): https://localhost:8090/fhir",
+        "source scripts/sesion_demo.sh    # deja $CURL (HTTPS con la CA) y $TOKEN (OAuth 2.0)",
         "",
-        "# Ejemplos oficiales",
-        "curl -X POST --data-binary @ejemplos/01_adt_a01_valido_sede2.hl7 http://localhost:8001/hsb/hl7",
-        "curl -X POST --data-binary @ejemplos/02_oru_r01_laboratorio_sede1.hl7 http://localhost:8001/hsb/hl7",
-        "curl -X POST --data-binary @ejemplos/03_adt_a01_invalido.hl7 http://localhost:8001/hsb/hl7",
-        "curl -X POST --data-binary @ejemplos/04_sede3_legado.csv \"http://localhost:8001/hsb/csv?sede=3\"",
+        "# Ejemplos oficiales (el bus exige token)",
+        "$CURL -H \"Authorization: Bearer $TOKEN\" -X POST --data-binary @ejemplos/01_adt_a01_valido_sede2.hl7 \\",
+        "      https://localhost:8001/hsb/hl7",
+        "$CURL -H \"Authorization: Bearer $TOKEN\" -X POST --data-binary @ejemplos/04_sede3_legado.csv \\",
+        "      \"https://localhost:8001/hsb/csv?sede=3\"",
         "",
-        "# Datos sintéticos masivos",
-        "python3 scripts/generar_datos_prueba.py --pacientes 80",
+        "# Seguridad de las bases (mínimo privilegio, auditoría de solo agregar, TLS obligatorio)",
+        "bash scripts/demo_seguridad_bd.sh",
         "",
         "# Reintento: HAPI caído",
         "docker compose stop hapi-fhir   # enviar un mensaje, luego:",
@@ -1328,6 +1461,9 @@ def s_anexos(w, img, evid):
          "auditoría persistente, panel de administración, gestión de usuarios, vistas, generador de datos y "
          "pruebas", "Pruebas en vivo en Kali Linux con Docker (ejemplos, duplicado, reintento, caída de sede, "
          "alteración, `$validate`) y 44 pruebas automatizadas"],
+        ["Mejora v3 (seguridad)", "Claude Code (Anthropic)", "Servidor OAuth 2.0, autorización en el bus, roles "
+         "de las bases, TLS y certificados, pasarela FHIR y pruebas", "Despliegue sobre datos existentes en Kali "
+         "Linux; pruebas de permisos, TLS y tokens (Anexo C); 60 pruebas y 70/70 comprobaciones"],
         ["Imagen de portada del inicio de sesión", "Asistente ATLAS", "Generación de la imagen", "Selección por "
          "los integrantes"],
     ], anchos=[2.8, 3, 5.2, 4], titulo="Uso declarado de IA (detalle en `docs/bitacora.md`).", tam=8.5)
@@ -1375,16 +1511,16 @@ def s_escalabilidad(w, img):
         "**[Propuesto]** Réplicas del HSB detrás de un balanceador y un broker (Kafka o RabbitMQ) particionado "
         "por sede; autoescalado por tamaño de cola.",
         "**[Propuesto]** Réplicas de lectura en PostgreSQL; *replica set* en MongoDB; Citus si una sede crece a "
-        "millones de atenciones; HAPI sobre PostgreSQL y en más de una instancia.",
+        "millones de atenciones; HAPI en más de una instancia.",
         "**[Propuesto]** Prometheus y Grafana sobre los `/metrics` existentes; prueba de carga.",
     ])
     w.tabla(["Aspecto", "Implementado", "Propuesto (no implementado)"], [
         ["Ingesta", "Un HSB con cola en hilo de segundo plano y estado en las bases", "Réplicas del HSB y broker "
          "particionado por sede"],
         ["Datos", "2 PostgreSQL y 1 MongoDB, cada uno un nodo único", "Réplicas de lectura; *replica set*; Citus"],
-        ["FHIR", "Una instancia de HAPI con su base embebida", "HAPI sobre PostgreSQL y varias instancias"],
-        ["Seguridad", "JWT HS256, roles, cuentas PBKDF2 en `pg_central`", "Keycloak/OIDC, TLS entre servicios, "
-         "autenticación en el HSB"],
+        ["FHIR", "Una instancia de HAPI persistida en PostgreSQL, solo en red local", "Varias instancias de HAPI"],
+        ["Seguridad", "OAuth 2.0 RS256 (API y bus), roles de mínimo privilegio, TLS 1.3 en cada tramo, CA propia",
+         "Keycloak/OIDC con PKCE, TLS mutuo, gestor de secretos, cifrado en reposo"],
         ["Auditoría", "Cadena SHA-256 en `pg_central`", "Anclaje en Hyperledger Fabric (bonus no hecho)"],
         ["Despliegue", "Docker Compose; manifiestos para Minikube", "Autoescalado del HSB por tamaño de cola"],
     ], anchos=[2.4, 6.2, 6.4], titulo="Viabilidad técnica: implementado frente a propuesto.")
@@ -1404,8 +1540,13 @@ def s_cumplimiento(w, img):
         "por paciente con la lista de faltantes.",
         "**[Implementado]** Contraseñas PBKDF2-SHA256 con sal por usuario; contraseña temporal con cambio "
         "obligatorio; cada alta, desactivación o restablecimiento queda auditado.",
-        "**[Propuesto]** TLS entre servicios, cifrado de las bases en reposo y gestión de secretos.",
-        "**[Propuesto]** Proveedor de identidad (Keycloak/OIDC) y autenticación en los endpoints del HSB.",
+        "**[Implementado]** OAuth 2.0: tokens RS256 con audiencia y scopes; el HSB exige token y un sistema de "
+        "sede solo escribe en su sede.",
+        "**[Implementado]** Mínimo privilegio en las bases (un rol por servicio; la auditoría es de solo "
+        "agregar) y cifrado en tránsito con TLS 1.3 entre todos los servidores; las bases no tienen puertos "
+        "publicados.",
+        "**[Propuesto]** Cifrado de las bases en reposo, gestor de secretos y proveedor de identidad externo "
+        "(Keycloak/OIDC).",
         "**[Propuesto]** Registro del consentimiento del paciente (recurso FHIR Consent) y políticas de "
         "retención de la historia clínica.",
     ])
@@ -1612,7 +1753,9 @@ def _recorte_evidencia(nombre, lineas):
         return (lineas[:4] + ["[...]"] + log + ["[...]"]
                 + desde("Reencolar el mensaje", 7) + [ln for ln in lineas if "ENTREGADO tras 1 intentos" in ln])
     if nombre.startswith("06_"):
-        return lineas[:2] + ["[... 44 pruebas, todas PASSED ...]"] + lineas[-1:]
+        return lineas[:2] + ["[... 60 pruebas, todas PASSED ...]"] + lineas[-1:]
+    if nombre.startswith("08_"):
+        return [ln for ln in lineas if ln.strip()][:70]
     return lineas[:45]
 
 
@@ -1701,7 +1844,8 @@ def construir():
     # --- tabla de contenido ------------------------------------------------------------------
     w.cursor = hijos[4]
     w.p("**Asignatura:** Sistemas Distribuidos · Parcial final · Noviembre de 2026", alinear="center", despues=2)
-    w.p("**Versión:** prototipo v2 (57 campos, traductor universal y sedes con motores distintos)",
+    w.p("**Versión:** prototipo v3 (57 campos, traductor universal, sedes con motores distintos y seguridad "
+        "OAuth 2.0 + TLS)",
         alinear="center", despues=18)
     w.p("**CONTENIDO**", alinear="left", despues=6)
     toc = w._nuevo_parrafo()
