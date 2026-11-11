@@ -1,0 +1,101 @@
+# Evidencia: reintentos con espera creciente, mensaje muerto y reencolado — 2026-11-11 00:22:06
+$ docker compose stop hapi-fhir
+ Container hapi_fhir_r4  Stopped
+
+[2026-11-11 00:22:09] Envío MSG-EVID-MUERTO con HAPI apagado:
+{
+    "estado": "reintentando",
+    "mensaje_id": "MSG-EVID-MUERTO",
+    "bundle_id": "bundle-pac-1001",
+    "intentos": 1,
+    "max_intentos": 7,
+    "proximo_intento_s": 2.0,
+    "motivo": "HAPI FHIR no disponible: ConnectError",
+    "documento": "1001",
+    "numero_visita": "V-S1-0150",
+    "recursos_fhir": [
+        "Organization/org-sede-1",
+        "Practitioner/prac-MED-01",
+        "Patient/pac-1001",
+        "Encounter/enc-V-S1-0150",
+        "Condition/cond-V-S1-0150-egr-I10",
+        "Condition/cond-V-S1-0150-ing-I10",
+        "Condition/cond-V-S1-0150-rel-R51",
+        "Observation/obs-V-S1-0150-718-7",
+        "Observation/obs-V-S1-0150-8480-6",
+        "MedicationRequest/med-V-S1-0150-losartan",
+        "AllergyIntolerance/alg-1001"
+    ]
+}
+[2026-11-11 00:22:09] Se deja HAPI apagado más que la ventana de reintentos (~126 s)...
+[2026-11-11 00:24:18] Estado de MSG-EVID-MUERTO:
+  MSG-EVID-MUERTO MUERTO intentos= 7 · Superó 7 intentos. Último error: HAPI FHIR no disponible: ConnectError
+
+[2026-11-11 00:24:18] Envío MSG-EVID-REINTENTO (HAPI sigue apagado) y enciendo HAPI:
+{
+    "estado": "reintentando",
+    "mensaje_id": "MSG-EVID-REINTENTO",
+    "bundle_id": "bundle-pac-1001",
+    "intentos": 1,
+    "max_intentos": 7,
+    "proximo_intento_s": 2.0,
+    "motivo": "HAPI FHIR no disponible: ConnectError",
+    "documento": "1001",
+    "numero_visita": "V-S1-0150",
+    "recursos_fhir": [
+        "Organization/org-sede-1",
+        "Practitioner/prac-MED-01",
+        "Patient/pac-1001",
+        "Encounter/enc-V-S1-0150",
+        "Condition/cond-V-S1-0150-egr-I10",
+        "Condition/cond-V-S1-0150-ing-I10",
+        "Condition/cond-V-S1-0150-rel-R51",
+        "Observation/obs-V-S1-0150-718-7",
+        "Observation/obs-V-S1-0150-8480-6",
+        "MedicationRequest/med-V-S1-0150-losartan",
+        "AllergyIntolerance/alg-1001"
+    ]
+}
+$ docker compose start hapi-fhir
+ Container hapi_fhir_r4  Started
+[2026-11-11 00:26:30] Estado final de MSG-EVID-REINTENTO: ENTREGADO
+
+# Log del bus (docker compose logs hsb):
+2026-11-11 05:22:09,729 [WARNING] Mensaje MSG-EVID-MUERTO: intento 1 falló (HAPI FHIR no disponible: ConnectError). Pasa a REINTENTANDO, siguiente en 2 s
+2026-11-11 05:22:11,730 [INFO] HSB reintento 2/7 del mensaje MSG-EVID-MUERTO
+2026-11-11 05:22:11,853 [WARNING] Intento 2 de MSG-EVID-MUERTO falló (HAPI FHIR no disponible: ConnectError). Siguiente en 4 s
+2026-11-11 05:22:15,857 [INFO] HSB reintento 3/7 del mensaje MSG-EVID-MUERTO
+2026-11-11 05:22:15,972 [WARNING] Intento 3 de MSG-EVID-MUERTO falló (HAPI FHIR no disponible: ConnectError). Siguiente en 8 s
+2026-11-11 05:22:23,985 [INFO] HSB reintento 4/7 del mensaje MSG-EVID-MUERTO
+2026-11-11 05:22:24,150 [WARNING] Intento 4 de MSG-EVID-MUERTO falló (HAPI FHIR no disponible: ConnectError). Siguiente en 16 s
+2026-11-11 05:22:40,151 [INFO] HSB reintento 5/7 del mensaje MSG-EVID-MUERTO
+2026-11-11 05:22:40,329 [WARNING] Intento 5 de MSG-EVID-MUERTO falló (HAPI FHIR no disponible: ConnectError). Siguiente en 32 s
+2026-11-11 05:23:12,331 [INFO] HSB reintento 6/7 del mensaje MSG-EVID-MUERTO
+2026-11-11 05:23:12,465 [WARNING] Intento 6 de MSG-EVID-MUERTO falló (HAPI FHIR no disponible: ConnectError). Siguiente en 64 s
+2026-11-11 05:24:16,468 [INFO] HSB reintento 7/7 del mensaje MSG-EVID-MUERTO
+2026-11-11 05:24:16,656 [ERROR] Mensaje MSG-EVID-MUERTO pasa a MUERTO (cola de mensajes muertos): HAPI FHIR no disponible: ConnectError
+2026-11-11 05:24:18,495 [WARNING] Mensaje MSG-EVID-REINTENTO: intento 1 falló (HAPI FHIR no disponible: ConnectError). Pasa a REINTENTANDO, siguiente en 2 s
+2026-11-11 05:24:20,497 [INFO] HSB reintento 2/7 del mensaje MSG-EVID-REINTENTO
+2026-11-11 05:24:20,601 [WARNING] Intento 2 de MSG-EVID-REINTENTO falló (HAPI FHIR no disponible: ConnectError). Siguiente en 4 s
+2026-11-11 05:24:24,610 [INFO] HSB reintento 3/7 del mensaje MSG-EVID-REINTENTO
+2026-11-11 05:24:24,798 [WARNING] Intento 3 de MSG-EVID-REINTENTO falló (HAPI FHIR no disponible: ConnectError). Siguiente en 8 s
+2026-11-11 05:24:32,801 [INFO] HSB reintento 4/7 del mensaje MSG-EVID-REINTENTO
+2026-11-11 05:24:32,927 [WARNING] Intento 4 de MSG-EVID-REINTENTO falló (HAPI FHIR no disponible: ConnectError). Siguiente en 16 s
+2026-11-11 05:24:48,935 [INFO] HSB reintento 5/7 del mensaje MSG-EVID-REINTENTO
+2026-11-11 05:24:48,978 [WARNING] Intento 5 de MSG-EVID-REINTENTO falló (HAPI FHIR no disponible: ConnectError). Siguiente en 32 s
+2026-11-11 05:25:20,987 [INFO] HSB reintento 6/7 del mensaje MSG-EVID-REINTENTO
+2026-11-11 05:25:21,186 [WARNING] Intento 6 de MSG-EVID-REINTENTO falló (HAPI FHIR no disponible: ConnectError). Siguiente en 64 s
+2026-11-11 05:26:25,187 [INFO] HSB reintento 7/7 del mensaje MSG-EVID-REINTENTO
+2026-11-11 05:26:30,371 [INFO] Mensaje MSG-EVID-REINTENTO ENTREGADO tras 7 intentos (132005 ms)
+
+[2026-11-11 00:26:31] Reencolar el mensaje muerto con HAPI ya encendido:
+$ curl -X POST http://localhost:8001/hsb/reencolar/MSG-EVID-MUERTO
+{
+    "mensaje": "Mensaje MSG-EVID-MUERTO reencolado",
+    "nuevo_estado": "REINTENTANDO"
+}
+  MSG-EVID-MUERTO ENTREGADO intentos= 1
+  MSG-EVID-REINTENTO ENTREGADO intentos= 7
+INFO:     172.22.0.1:45266 - "POST /hsb/reencolar/MSG-EVID-MUERTO HTTP/1.1" 200 OK
+2026-11-11 05:26:31,575 [INFO] HSB reintento 1/7 del mensaje MSG-EVID-MUERTO
+2026-11-11 05:26:34,214 [INFO] Mensaje MSG-EVID-MUERTO ENTREGADO tras 1 intentos (2607 ms)

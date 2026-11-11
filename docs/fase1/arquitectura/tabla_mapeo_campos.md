@@ -1,78 +1,105 @@
-# Tabla de Mapeo de Campos — HL7 v2 / CSV → BD → FHIR R4
+# Tabla de mapeo de campos — HL7 v2 / CSV → PostgreSQL / MongoDB → FHIR R4
 
 **Responsable:** B — Sharit Javier Manjarrez
-**Fuente de los ejemplos:** archivos `ejemplos/01..04`
+**Versión:** v2 — 57 campos de la Resolución 866 de 2021
 
 ---
 
-## Notas de lectura
+## Cómo se lee
 
-- **Origen HL7:** `SEG-N` = segmento, posición del campo (base 1). Ej: `PID-3` = tercer campo del segmento PID.
-- **Componente HL7:** `SEG-N[k]` = k-ésimo componente dentro del campo (separador `^`). Ej: `PID-5[1]` = apellido.
-- **Origen CSV:** nombre de columna en `04_sede3_legado.csv`.
-- **Tabla BD:** nombre de la tabla en el esquema de cada nodo PostgreSQL (Fase 2).
-- **Campo BD:** nombre de columna en esa tabla.
-- **Recurso FHIR:** notación `Recurso.ruta.atributo` según FHIR R4.
-- **Transformación:** lógica adicional necesaria (mapeo, formato, constante).
+Desde la v2 el mapeo no está escrito a mano en el código: vive en **un solo catálogo**,
+`traductor/catalogo_57.py`. Cada fila del catálogo dice, para un campo:
 
----
+- de qué **segmento/campo/componente HL7 v2.5** sale (`PID-11.9` = segmento PID, campo 11,
+  componente 9; los separadores son `|` y `^`);
+- qué **columna del CSV** legado lo trae (separador `;`);
+- en qué **`tabla.columna` de PostgreSQL** queda (sedes 1 y 3, `db/schema.sql`);
+- en qué **ruta del documento MongoDB** queda (sede 2, colección `pacientes`, `db/sede2/init-mongo.js`);
+- a qué **elemento FHIR R4** corresponde (`fhir/normalizer.py`).
 
-## Tabla (22 campos mapeados)
+La tabla completa de los 57 campos se genera desde el catálogo y está en
+[`docs/mapeo_57_campos.md`](../../mapeo_57_campos.md) (`python -m traductor.generar_mapeo`).
+Aquí van 24 filas representativas, incluidas las del ejemplo de la guía de la Fase 1.
 
-| # | Origen HL7 / CSV | Tabla BD | Campo BD | Recurso FHIR | Transformación |
-|---|-----------------|----------|----------|-------------|----------------|
-| 1 | `PID-3` / `documento` | `usuario` | `documento_id` | `Patient.identifier[0].value` | Validar solo dígitos, 4–15 chars |
-| 2 | `PID-5[1]` / `nombre` (apellido) | `usuario` | `nombre_completo` | `Patient.name[0].family` | Separar `Apellido^Nombre` → family + given |
-| 3 | `PID-5[2]` / `nombre` (nombre) | `usuario` | `nombre_completo` | `Patient.name[0].given[0]` | Componente 2 del campo PID-5 |
-| 4 | `PID-7` / `nacimiento` | `usuario` | `fecha_nacimiento` | `Patient.birthDate` | HL7: `YYYYMMDD` → ISO `YYYY-MM-DD`; CSV ya viene en ISO |
-| 5 | `PID-8` / `sexo` | `usuario` | `sexo` | `Patient.gender` | `M`→`male`, `F`→`female`, `O`→`other`; otros: rechazar |
-| 6 | `PID-11` | `usuario` | `direccion` | `Patient.address[0].text` | Campo libre |
-| 7 | `MSH-4` / `sede` (columna implícita `?sede=N`) | `atencion` | `sede_id` | `Encounter.serviceProvider.reference` | `SEDE1`→`1`, `SEDE2`→`2`, `SEDE3`→`3`; validar rango 1-3 |
-| 8 | `PV1-2` | `atencion` | `clase_atencion` | `Encounter.class.code` | `E`→`EMER`, `O`→`AMB`, `I`→`IMP` (HL7 v3 ActCode) |
-| 9 | `PV1-7[1]` / `profesional` | `profesional_salud` | `codigo` | `Encounter.participant[0].individual.reference` | `Practitioner/MED-01` |
-| 10 | `PV1-7[2]` / `profesional` (apellido) | `profesional_salud` | `nombre_completo` | `Practitioner.name.family` | Componente 2 de PV1-7 |
-| 11 | `PV1-19` | `atencion` | `numero_visita` | `Encounter.identifier[0].value` | Clave de idempotencia del Encounter |
-| 12 | `PV1-44` / `fecha` | `atencion` | `fecha_ingreso` | `Encounter.period.start` | HL7: `YYYYMMDDHHmm` → ISO 8601; CSV: columna `fecha` |
-| 13 | `PV1-45` | `atencion` | `fecha_egreso` | `Encounter.period.end` | Puede ser nulo (atención abierta) |
-| 14 | `DG1-3[1]` | `diagnostico` | `cie10_codigo` | `Condition.code.coding[0].code` | Si sistema=`I10`: usar tal cual; si sistema=`L`: rechazar (HL7); CSV: mapear via `05_ref_terminologia.csv` |
-| 15 | `DG1-3[2]` / `dx_local` (descripción) | `diagnostico` | `descripcion_cie10` | `Condition.code.coding[0].display` | Texto descriptivo; para CSV viene de la tabla de terminología |
-| 16 | `DG1-5` | `diagnostico` | `fecha_diagnostico` | `Condition.onsetDateTime` | Mismo formato que PID-7 |
-| 17 | `OBX-3[1]` | `tecnologia_salud` | `loinc_codigo` | `Observation.code.coding[0].code` | Validar que sea código LOINC numérico-guion |
-| 18 | `OBX-3[2]` | `tecnologia_salud` | `descripcion_loinc` | `Observation.code.coding[0].display` | Texto libre del segmento |
-| 19 | `OBX-5` | `tecnologia_salud` | `valor` | `Observation.valueQuantity.value` | Parsear como número decimal |
-| 20 | `OBX-6` | `tecnologia_salud` | `unidad` | `Observation.valueQuantity.unit` | Texto libre; p. ej. `g/dL` |
-| 21 | `triage` (CSV) | `atencion` | `triage` | `Encounter.priority.coding[0].code` | Escala 1–5; nulo → no se mapea al Bundle |
-| 22 | `MSH-10` | `mensaje_bus` | `mensaje_id` | — (clave de idempotencia del bus, no va al Bundle) | Almacenada como hash SHA-256 del contenido completo |
+Convenciones:
+- `[]` en una ruta de MongoDB es un arreglo: `atenciones[]` es cada atención embebida en el
+  documento del paciente; dentro de ella, `tecnologias[]` y `diagnosticos[]`.
+- Los campos que HL7 v2.5 no trae viajan en **segmentos Z** acordados para el proyecto: `ZPI`
+  (datos complementarios del paciente), `ZPV` (atención), `ZRX` (finalidad del medicamento) y
+  `ZEG` (egreso). Son una convención local, no un estándar nacional.
+- Los diagnósticos 33–39 son filas de `diagnostico` con `rol` = INGRESO, EGRESO o RELACIONADO
+  (y `orden` 1–3 para los relacionados). En HL7 el rol sale de `DG1-6` (`A` ingreso, `F` egreso).
 
 ---
 
-## Reglas de validación derivadas de la tabla
+## Tabla (24 filas representativas)
 
-| Campo | Regla | Acción si falla |
-|-------|-------|-----------------|
-| `documento_id` | Solo dígitos, longitud 4–15 | RECHAZAR · motivo: "documento no numérico" ó "longitud inválida" |
-| `nombre_completo` | No vacío, mínimo 2 chars | RECHAZAR · motivo: "nombre vacío" |
-| `sexo` | Exactamente `M`, `F` o `O` | RECHAZAR · motivo: "sexo no válido" |
-| `sede_id` | Entero 1, 2 ó 3 | RECHAZAR · motivo: "sede desconocida" |
-| `fecha_nacimiento` / `fecha_ingreso` | Fecha válida, no futura | RECHAZAR · motivo: "fecha inválida" |
-| `cie10_codigo` (HL7 sistema `I10`) | Formato `[A-Z][0-9]{2}(\.[0-9]{1,4})?` | RECHAZAR · motivo: "CIE-10 con formato incorrecto" |
-| `cie10_codigo` (HL7 sistema `L` / CSV) | `dx_local` debe existir en `05_ref_terminologia.csv` | RECHAZAR · motivo: "diagnóstico sin mapeo a CIE-10" |
-| `loinc_codigo` | Formato `[0-9]+-[0-9]+` | RECHAZAR · motivo: "LOINC con formato incorrecto" |
+| # campo | Origen HL7 v2 / CSV | PostgreSQL (tabla.columna) | MongoDB (`pacientes`) | Recurso FHIR R4 | Transformación |
+|---|---|---|---|---|---|
+| 1 | `PID-3.5` / `tipo_documento` | `usuario.tipo_documento` | `identificacion.tipo` | `Patient.identifier.type` | Dominio con sinónimos (`NI`, `CEDULA`, `HIS`, `MR` → `CC`); si no viene, `CC` |
+| 2 | `PID-3.1` / `documento` | `usuario.documento_id` | `identificacion.numero` (y `_id`) | `Patient.identifier.value`, id `pac-<doc>` | Validar solo dígitos, 4 a 15 |
+| 4 | `PID-5` / `nombre` | `usuario.nombre_completo` (+ `apellidos`, `nombres`) | `nombre.completo` | `Patient.name` | `Apellido^Nombre` se separa en `family` y `given` |
+| 5 | `PID-7` / `nacimiento` | `usuario.fecha_nacimiento` | `nacimiento.fecha` | `Patient.birthDate` | `YYYYMMDD` → `YYYY-MM-DD`; no futura |
+| 6 | derivado / `edad` | `usuario.edad` | `nacimiento.edad` | `Patient.extension(edad)` | Se calcula con la fecha de nacimiento y la de ingreso |
+| 8 | `PID-8` / `sexo` | `usuario.sexo` (CHECK M/F/O) | `sexo_biologico` | `Patient.gender` | `M`→`male`, `F`→`female`, `O`/`I`→`other`; otro valor se rechaza |
+| 14 | `PID-11.9` / `municipio_residencia` | `usuario.municipio_residencia` | `residencia.municipio_dane` | `Patient.address.district` | Código DANE de 5 dígitos |
+| 52 | `PID-11.1` / `direccion` | `usuario.direccion_residencia` | `residencia.direccion` | `Patient.address.line` | Texto libre |
+| 55 | `NK1-2` / `nombre_responsable` | `usuario.nombre_responsable` | `responsable.nombre` | `Patient.contact.name` | — |
+| 16 | `IN1-4.1` / `entidad_salud` | `atencion.entidad_salud` | `atenciones[].aseguradora` | `Encounter.extension(entidad-salud)` | — |
+| — | `PV1-19.1` | `atencion.numero_visita` | `atenciones[].numero_visita` | `Encounter.identifier`, id `enc-<visita>` | Llave de la atención en las dos bases |
+| 17 | `PV1-44` / `fecha` | `atencion.fecha_ingreso` | `atenciones[].ingreso.fecha` | `Encounter.period.start` | `YYYYMMDDHHMM` → ISO 8601 con zona `-05:00` en FHIR |
+| 19 | `PV1-2` / `entorno_atencion` | `atencion.entorno_atencion` | `atenciones[].ingreso.entorno` | `Encounter.class` | `E`→`01` Urgencias, `O`→`02` Consulta externa, `I`→`03` Hospitalización |
+| 23 | `ZPV-3` / `triage` | `atencion.clasificacion_triage` (CHECK 1–5) | `atenciones[].triage.clasificacion` | `Encounter.priority` | Romanos `I`–`V` → `1`–`5` |
+| — | `PV1-7.1` / `profesional` | `atencion.codigo_profesional` | `atenciones[].profesional.codigo` | `Encounter.participant` → `Practitioner/prac-<código>` | — |
+| 34 | `DG1-3.1` con `DG1-6=A` / `dx_local` | `diagnostico.cie10_codigo` con `rol='INGRESO'` | `atenciones[].diagnosticos[rol=INGRESO].cie10` | `Condition.code` (CIE-10), id `cond-<visita>-ing-<cie10>` | HL7: sistema `I10` obligatorio. CSV: texto local → CIE-10 con `ejemplos/05_ref_terminologia.csv`; sin mapeo se rechaza |
+| 36 | `DG1-3.1` con `DG1-6=F` | `diagnostico.cie10_codigo` con `rol='EGRESO'` | `atenciones[].diagnosticos[rol=EGRESO].cie10` | `Condition.code` + `Encounter.diagnosis` | — |
+| — | `OBX-3.1`, `OBX-5`, `OBX-6.1` | `tecnologia_salud.loinc_codigo`, `.valor`, `.unidad` (`tipo='LABORATORIO'`) | `atenciones[].tecnologias[].loinc`, `.resultado.valor`, `.resultado.unidad` | `Observation.code` (LOINC), `Observation.valueQuantity`, id `obs-<visita>-<loinc>` | Validar LOINC `^[0-9]+-[0-9]+$`; valor decimal |
+| 25 | `RXE-2.2` / `medicamento` | `tecnologia_salud.descripcion_medicamento` (`tipo='MEDICAMENTO'`) | `atenciones[].tecnologias[].medicamento` | `MedicationRequest.medicationCodeableConcept.text` | — |
+| 27 | `RXR-1.1` / `via_administracion` | `tecnologia_salud.via_administracion` | `atenciones[].tecnologias[].via` | `MedicationRequest.dosageInstruction.route` | `PO`→`01` Oral, `IV`→`02`, `IM`→`03`… |
+| 41 | `PV1-36` / `condicion_salida` | `egreso.condicion_salida` | `atenciones[].egreso.condicion` | `Encounter.hospitalization.dischargeDisposition` | `01` vivo, `02` muerto (sinónimos `FALLECIDO`, `20`) |
+| 42 | `ZEG-1` / `diagnostico_muerte` | `egreso.diagnostico_muerte` | `atenciones[].egreso.diagnostico_muerte` | `Encounter.extension(diagnostico-muerte)` | Solo si la condición de salida es muerto |
+| 43 | derivado de `MSH-4` / `codigo_prestador` | `egreso.codigo_prestador` | `atenciones[].egreso.codigo_prestador` | `Organization.identifier` (`org-sede-N`) | Código REPS sintético de la sede |
+| — | `MSH-10` | `mensaje_bus.mensaje_id` | `mensajes_bus._id` | — (no va al Bundle) | Llave de idempotencia; para CSV es `CSV-S<sede>-<hash>` de la fila |
+
+Las extensiones FHIR propias usan la base `https://minsalud.gov.co/fhir/StructureDefinition/`
+(por ejemplo `.../edad`, `.../entidad-salud`). Son URLs del proyecto, no perfiles publicados.
+
+---
+
+## Reglas de validación (antes de transformar)
+
+Están en `hsb/validator.py`. Un mensaje que incumple cualquiera se **rechaza** con la lista
+completa de motivos y queda registrado en `mensaje_bus` con estado RECHAZADO.
+
+| Campo | Regla | Motivo que devuelve el bus |
+|---|---|---|
+| Documento (2) | No vacío, solo dígitos, 4 a 15 | `documento no puede ser vacío` / `documento no numérico` / `documento fuera de rango: tiene N dígitos…` |
+| Nombre (4) | No vacío | `nombre no puede ser vacío` |
+| Sexo (8) | `M`, `F` u `O` (tras aplicar sinónimos) | `sexo no válido ('X'): debe ser M, F u O` |
+| Sede | 1, 2 o 3 (de `MSH-4` o de `?sede=N`) | `sede no válida o desconocida (...)` |
+| Fecha de nacimiento (5) | Válida y no futura | `fecha de nacimiento no válida` / `en el futuro` |
+| Fecha de ingreso (17) | Válida si viene | `fecha de ingreso no válida` |
+| Diagnóstico (34, 36–39) | CIE-10 `^[A-Z][0-9]{2}(\.[0-9]{1,4})?$` y no un código local (`L`) sin mapear | `diagnóstico sin mapeo a CIE-10` |
+| Laboratorio | LOINC `^[0-9]+-[0-9]+$` | `código LOINC inválido: '...'` |
+| Medicamento (25) | Con descripción si la tecnología es un medicamento | `medicamento sin descripción (campo 25)` |
+
+Los valores **opcionales** que no pertenecen a su dominio no rechazan el mensaje: el traductor los
+omite y el bus devuelve una **advertencia**.
 
 ---
 
 ## Verificación con los archivos de ejemplo
 
-| Archivo | Campo crítico | Valor en archivo | Resultado esperado |
-|---------|--------------|------------------|--------------------|
-| `01` | PID-3 | `1007` | Válido → `Patient.identifier = 1007` |
-| `01` | PID-8 | `F` | Válido → `Patient.gender = female` |
-| `01` | DG1-3 | `J45.9^Asma^I10` | Sistema I10 → código válido → `Condition.code = J45.9` |
-| `02` | OBX-3 | `718-7^Hemoglobina^LN` | LOINC válido → `Observation.code = 718-7` |
-| `02` | OBX-5 | `13.8` | `Observation.valueQuantity.value = 13.8` |
-| `03` | PID-3 | `ABC123` | **RECHAZAR** · no numérico |
-| `03` | PID-8 | `X` | **RECHAZAR** · sexo inválido |
-| `03` | DG1-3 | `DIARREA^Diarrea^L` | Sistema `L` en HL7 → búsqueda en tabla de mapeo; `DIARREA` SÍ existe → el tercer error es que el sistema declarado `L` no provee un código CIE-10 en posición [1]; el HSB exige que HL7 con sistema `I10` lleve el código. Con `L` se fuerza el mapeo pero el código resultante `A09` no viene en el campo [1], lo que viola el contrato del segmento DG1. **Decisión de diseño:** HL7 con sistema `L` siempre se rechaza ("diagnóstico en sistema local no permitido por HL7; use CSV para datos legados"). |
-| `04` fila 4 | documento | `12` | **RECHAZAR** · longitud 2 < mínimo 4 |
-| `04` fila 5 | dx_local | `DOLOR MISTERIOSO` | **RECHAZAR** · no existe en `05_ref_terminologia.csv` |
+| Archivo | Campo | Valor | Resultado medido |
+|---|---|---|---|
+| `01_adt_a01_valido_sede2.hl7` | `PID-3`, `PID-8`, `DG1-3` | `1007`, `F`, `J45.9^Asma^I10` | Entregado en la sede 2 (MongoDB): `Patient/pac-1007`, Encounter y Condition J45.9 |
+| `02_oru_r01_laboratorio_sede1.hl7` | `OBX-3`, `OBX-5`, `OBX-6` | `718-7`, `13.8`, `g/dL` | Entregado en la sede 1 (PostgreSQL): Observation 718-7 = 13.8 g/dL para 1001 |
+| `03_adt_a01_invalido.hl7` | `PID-3`, `PID-8`, `DG1-3` | `ABC123`, `X`, `DIARREA^Diarrea^L` | Rechazado con 3 motivos: documento no numérico, sexo no válido, diagnóstico sin mapeo a CIE-10 |
+| `04_sede3_legado.csv` fila 4 | `dx_local` | `DOLOR MISTERIOSO` | Rechazado: no está en `05_ref_terminologia.csv` |
+| `04_sede3_legado.csv` fila 5 | `documento` | `12` | Rechazado: 2 dígitos |
+| `04_sede3_legado.csv` filas 1–3 | — | 1008, 1009, 1010 | Entregados en la sede 3 (PostgreSQL) |
+| `tests/datos/06_adt_a03_57_campos_sede1.hl7` | todos los segmentos, incluidos `ZPI`, `ZPV`, `ZRX`, `ZEG` | paciente 1020 | 11 recursos FHIR, 56 de 57 campos (falta solo el 42 porque el paciente sale vivo) |
 
+> **Decisión sobre `DG1-3` con sistema `L` en HL7:** aunque `DIARREA` existe en la tabla de
+> terminología, un mensaje HL7 debe traer el código CIE-10 con sistema `I10`. El mapeo de texto
+> local a CIE-10 solo se aplica al CSV legado, que no tiene sistema de codificación.

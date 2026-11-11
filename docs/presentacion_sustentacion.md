@@ -1,119 +1,127 @@
-# Presentación de Sustentación · Diapositivas
-## Plataforma Distribuida de Interoperabilidad Clínica
+# Presentación de sustentación · Diapositivas
 
-**Equipo:** Jose Guillermo Canchila (A) · Sharit Javier Manjarrez (B)  
-**Curso:** Sistemas Distribuidos · Parcial Final  
-**Duración:** 15 minutos de presentación + demostración en vivo
-
----
-
-## Diapositiva 1: Portada y Planteamiento del Problema
-
-### Plataforma Distribuida de Interoperabilidad Clínica
-*Red de IPS Sincelejo, Cartagena y Corozal*
-
-- **El Problema:**
-  - Red hospitalaria con 3 sedes independientes.
-  - Cada sede emite información en formatos dispares (HL7 v2.5 y CSV legado).
-  - La historia clínica de un paciente está fraccionada entre ciudades.
-  - **Desafío:** Unificar el expediente médico en tiempo real **SIN reemplazar los sistemas legados** ni forzar una migración traumática.
+**Equipo:** Jose Guillermo Canchila (A) · Sharit Javier Manjarrez (B)
+**Curso:** Sistemas Distribuidos · Parcial final
+**Uso:** apoyo de la demostración de 15 min (ver `guion_demostracion.md`). Una diapositiva por bloque.
 
 ---
 
-## Diapositiva 2: Arquitectura de Tres Capas
+## Diapositiva 1 · El problema
+
+**Plataforma distribuida de interoperabilidad clínica para una red de IPS con tres sedes heterogéneas**
+
+- Sincelejo, Cartagena y Corozal: cada sede con su sistema legado, **su base y su motor**.
+- Envían en formatos distintos: HL7 v2 (ADT, ORU) y CSV con `;`.
+- La historia de un paciente está partida en tres.
+- Meta: unificarla con los **57 campos de la Resolución 866 de 2021**, en FHIR R4, **sin reemplazar
+  los legados**.
+
+---
+
+## Diapositiva 2 · Arquitectura
 
 ```
-[ SEDES LEGADAS ] ──(HL7 v2 / CSV)──> [ HEALTH SERVICE BUS (HSB) ]
-                                              │
-                                 ┌────────────┴────────────┐
-                                 ▼                         ▼
-                         [ HAPI FHIR R4 ]          [ NODOS DE DATOS ]
-                           (:8090 REST)          (Sincelejo, Cartagena,
-                                 │                      Corozal)
-                                 └────────────┬────────────┘
-                                              ▼
-                                     [ API GATEWAY :8000 ]
-                                 (Seguridad RBAC + Auditoría)
-                                              │
-                    ┌──────────────┬──────────┴───┬──────────────┐
-                    ▼              ▼              ▼              ▼
-               [ Paciente ]  [ Admisión ]    [ Médico ]    [ Reporte ]
+ HL7 v2 ─┐                          ┌─> HAPI FHIR R4 :8090 (Bundle transaction, PUT)
+ CSV    ─┼─> HSB :8001 ─> traductor ┼─> Sede 1 Sincelejo · PostgreSQL  (pg_sede1)
+ JSON   ─┘   valida, idempotencia,  ├─> Sede 2 Cartagena · MongoDB     (mongo_sede2)
+             cola y reintentos      └─> Sede 3 Corozal   · PostgreSQL  (pg_sede3)
+                                          ▲
+ 4 vistas por rol ─> API Gateway :8000 ───┘  consulta unificada en paralelo
+                         └─> pg_central: auditoría encadenada SHA-256
 ```
 
-- **Principios Rectores:**
-  - Cero microservicios por moda: cada componente responde a un RF o RNF.
-  - Regla de oro: Ninguna vista habla directo con las bases de datos de las sedes; todo pasa por la API y el HSB.
+- 7 contenedores, **un comando**: `docker compose down -v && docker compose up -d --build`.
+- Regla de oro: ninguna vista habla con las bases. Lecturas por la API; escrituras por el HSB.
 
 ---
 
-## Diapositiva 3: Capa de Datos Distribuidos y Teorema CAP
+## Diapositiva 3 · Por qué motores distintos
 
-- **Decisión de Fragmentación:**
-  - Fragmentación horizontal por sede (`sede_id`).
-  - Coincide en un 95 % con la localidad de consulta y escritura inmediata.
-- **Justificación según Teorema CAP:**
-  - **Modelo AP (Disponibilidad y Tolerancia a Partición):** Si una sede cae (ej. Cartagena), la plataforma **sigue disponible**, responde con Sincelejo y Corozal, y etiqueta el reporte con aviso explícito de incompletitud.
-  - Renunciamos al bloqueo global inmediato de 2PC para no paralizar la atención médica ante caídas de enlace WAN.
-- **ACID Intra-Nodo:**
-  - Transacciones atómicas locales en PostgreSQL: si falla la inserción de una atención, se ejecuta un rollback total y no queda ningún registro huérfano.
-
----
-
-## Diapositiva 4: Health Service Bus (HSB) e Interoperabilidad Semántica
-
-- **Capacidades del HSB:**
-  - Ingesta multiformato: `POST /hsb/hl7` (ADT^A01, ORU^R01) y `POST /hsb/csv?sede=N`.
-  - Mapeo semántico dinámico: diagnósticos locales de CSV mapeados a CIE-10 (`05_ref_terminologia.csv`) y laboratorios a LOINC.
-  - Rechazo estricto con motivo antes de transformar: ningún mensaje inválido se pierde en silencio.
-- **Idempotencia Criptográfica Persistente:**
-  - Hash SHA-256 de la carga útil almacenado en la tabla `mensaje_bus`.
-  - Reenviar el mismo mensaje responde `duplicado` y no crea pacientes repetidos.
-- **Resiliencia y Reintentos con Backoff Exponencial:**
-  - Si HAPI FHIR no responde: reintentos en $1\text{ s}, 2\text{ s}, 4\text{ s}, 8\text{ s}$.
-  - Tras 4 fallos $\to$ Estado `MUERTO` (Dead Letter Queue) con posibilidad de reencolar.
+- El escenario dice que **cada sede conserva su sistema**: en la vida real no todas usan el mismo
+  motor. Por indicación del docente, la Sede 2 usa **MongoDB**.
+- MongoDB guarda **un documento por paciente** con sus atenciones embebidas, y con otros nombres:
+  `identificacion.numero` en vez de `documento_id`, `ingreso.fecha` en vez de `fecha_ingreso`.
+- La plataforma no puede suponer un esquema común → **repositorio con una sola interfaz**
+  (`RepositorioPostgres` / `RepositorioMongo`) y **traductor**.
+- Atomicidad:
+  - PostgreSQL: usuario + atención + diagnósticos + tecnologías + egreso en **una transacción**.
+  - MongoDB: la atención va dentro del documento → **una escritura de un documento**, atómica.
+- CAP: la consulta es **AP**. Si una sede cae, se responde con las otras dos y se marca
+  `reporte_completo = false`.
 
 ---
 
-## Diapositiva 5: Seguridad RBAC y Auditoría Inmutable
+## Diapositiva 4 · Traductor de 57 campos
 
-- **Autenticación JWT:**
-  - 4 roles con permisos diferenciados evaluados en la API Gateway:
-    - *Paciente:* Solo su propia historia (si cambia el doc en URL $\to$ 403 Forbidden).
-    - *Admisionista:* Registro y triage; sin acceso a diagnósticos clínicos.
-    - *Médico:* Consulta integral de 3 sedes, diagnóstico CIE-10 y egreso con sello hash.
-    - *Auditor:* Reporte completo, estado de nodos y verificación criptográfica.
-- **Cadena de Auditoría Encadenada por Hash SHA-256:**
-  $$\text{hash\_propio} = \text{SHA-256}(\text{hash\_anterior} + \text{timestamp} + \text{usuario} + \text{tipo\_evento} + \text{resultado} + \text{detalle})$$
-- **Verificador Matemático en Tiempo Real:**
-  - Recorre la cadena y señala inmediatamente el primer bloque adulterado.
-- **Cumplimiento Ley 1581 de 2012:**
-  - El paciente audita en su portal quién ha consultado su información.
+- **Un catálogo** (`traductor/catalogo_57.py`): para cada campo, HL7 → CSV → `tabla.columna` de
+  PostgreSQL → ruta en MongoDB → elemento FHIR.
+- **Registro canónico** como pivote: 3 entradas + 3 salidas = 6 traducciones, no 9.
+- **Segmentos Z** para lo que HL7 v2.5 no trae: `ZPI`, `ZPV`, `ZRX`, `ZEG` (convención del proyecto).
+- **Dominios con sinónimos**: `E` → `01` Urgencias, `III` → triage `3`, `PO` → vía `01` Oral.
+- Diagnósticos 33–39 como filas con rol (INGRESO, EGRESO, RELACIONADO). Derivados: edad, unidad,
+  código del prestador.
+- Ejemplo, campo 14: `PID-11.9` → `usuario.municipio_residencia` / `residencia.municipio_dane` →
+  `Patient.address.district`.
 
 ---
 
-## Diapositiva 6: Resultados Medidos y Telemetría
+## Diapositiva 5 · El HSB y los estados del mensaje
 
-| Indicador Evaluado | Objetivo Inicial | Medición Obtenida | Estado |
-|--------------------|:----------------:|:-----------------:|:------:|
-| **Comando de Despliegue** | 1 solo comando | `docker compose up -d` | ✅ 6/6 servicios activos |
-| **Latencia Consulta Unificada** | <500 ms | **18,4 ms** (3 sedes) | ✅ Óptimo |
-| **Cobertura FHIR Inicial** | 0 % | **0,0 %** (`fhir_patient_id = NULL`) | ✅ Verificado |
-| **Cobertura FHIR Post-Ingesta** | 100 % | **100,0 %** | ✅ Verificado |
-| **Detección de Duplicados** | 100 % | **100,0 %** reconocidos | ✅ Verificado |
-| **Detección de Alteraciones** | Detección exacta | **100,0 %** (índice e ID identificados) | ✅ Verificado |
+```
+RECIBIDO ─> VALIDADO ─> TRANSFORMADO ─> ENTREGADO
+   │             │            │  ▲
+   ▼             ▼            ▼  │ reintento OK
+RECHAZADO    RECHAZADO    REINTENTANDO ──(7 intentos)──> MUERTO ──(reencolar)──> REINTENTANDO
+                              error de datos ─────────────> MUERTO
+```
+
+- Traducir → **idempotencia** (`MSH-10` o hash, guardado en `mensaje_bus` de la sede) → validar →
+  Bundle → **HAPI primero, sede después**.
+- Reintentos en segundo plano: 2, 4, 8, 16, 32, 64 s (`HSB_MAX_RETRIES=7`). Responde `202` sin bloquear.
+- **Error de datos** (restricción violada, HAPI 4xx) → MUERTO de una vez: reintentar no lo arregla.
+- Al reiniciar el bus, recupera lo que quedó en REINTENTANDO o TRANSFORMADO.
 
 ---
 
-## Diapositiva 7: Demostración en Vivo y Conclusiones
+## Diapositiva 6 · Seguridad y auditoría
 
-### Demostración en Vivo (Paso a Paso):
-1. `docker compose down -v && docker compose up -d` limpio.
-2. Tablero de observabilidad con cobertura inicial al 0 %.
-3. Ingesta de mensajes HL7 y CSV $\to$ la cobertura sube y se genera el Bundle FHIR R4.
-4. Reenvío del mensaje $\to$ respuesta "duplicado" sin recrear filas.
-5. Caída intencional de una sede (`docker stop pg_sede2`) $\to$ la vista responde con 2 sedes y avisa.
-6. Demostración de alteración en auditoría $\to$ alerta roja en el tablero.
-7. Consulta federada del paciente 1001 (Carlos Pérez) con registros en las 3 sedes.
+- **JWT** y **4 roles** validados en la API (no en la pantalla): paciente, admisionista, médico,
+  auditor. Acción no permitida → **403** y evento `ACCESO_DENEGADO`.
+- Admisionista no ve diagnósticos. El médico firma con su identidad del token.
+- **Cadena SHA-256** en `pg_central.evento_auditoria`:
+  `hash = SHA-256(hash_anterior | índice | timestamp | usuario | rol | tipo | recurso | resultado | detalle)`
+- El verificador señala el **primer** evento alterado. Cada escritura del médico devuelve un
+  **sello** = hash de su evento.
 
-### Conclusión Principal:
-Es factible lograr interoperabilidad semántica clínica bajo estándares FHIR R4 y principios de alta disponibilidad respetando la soberanía de los legados hospitalarios.
+---
+
+## Diapositiva 7 · Resultados medidos (Kali, VM de 3,8 GB, Docker 28)
+
+| Prueba | Resultado |
+|---|---|
+| Arranque desde cero | Un comando; HAPI listo en 85–95 s |
+| Ejemplos oficiales | 01 entregado · reenvío duplicado (1 Patient 1007) · 02 entregado (718-7 = 13,8 g/dL) · 03 rechazado (3 motivos) · CSV 3 entregados + 2 rechazados |
+| Mensaje de 57 campos | 11 recursos FHIR · **56/57** campos · 100 % obligatorios (falta el 42: sale vivo) |
+| Cobertura FHIR | 0 % al inicio → sede 1: 50–67 %, sede 2: 33,3 %, sede 3: 75 % |
+| Historia de 1001 (3 sedes, 2 motores) | **52/57** campos, 100 % obligatorios · Bundle de 26 recursos, **0 errores** en `$validate` |
+| HAPI apagado | `reintentando` → 7 intentos → entregado solo a los **129,5 s**, sin duplicar |
+| `mongo_sede2` detenido | Responde con sedes 1 y 3, reporte incompleto, `/health` DEGRADED 2/3 |
+| `UPDATE` en la auditoría | Detectado en el **índice 3** |
+| Pruebas automatizadas | **36/36** |
+
+No medido de forma sistemática: latencia por mensaje y mensajes por minuto bajo carga.
+
+---
+
+## Diapositiva 8 · Limitaciones y trabajo futuro
+
+- MongoDB sin *replica set* (sin transacciones multi-documento ni conmutación por fallo).
+- Una sola instancia de HAPI.
+- Segmentos Z y códigos REPS son de este proyecto (sintéticos), no estándar nacional.
+- Cobertura FHIR por sede < 100 %: falta migrar por el bus a los pacientes legados.
+- El HSB no exige autenticación; JWT con usuarios de prueba.
+- **Siguiente:** *replica set*, script de migración, prueba de carga, Keycloak + TLS, anclaje en
+  Fabric, CI con las 36 pruebas.
+
+**Conclusión:** un catálogo de 57 campos, un registro canónico y entregas idempotentes bastan para
+unificar tres sedes con motores distintos, sin transacción distribuida y sin tocar los legados.

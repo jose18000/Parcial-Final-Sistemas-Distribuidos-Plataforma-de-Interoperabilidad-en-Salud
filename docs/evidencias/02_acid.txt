@@ -1,0 +1,37 @@
+# Evidencia: atomicidad (ACID) en PostgreSQL, sede 1 — 2026-11-11 00:21:57
+$ docker exec -i pg_sede1 psql -U clinica_user -d clinica_sincelejo < db/demo_acid.sql
+=====================================================
+PASO 1: ESTADO INICIAL (Verificar que usuario 9999 no existe)
+=====================================================
+ documento_id | nombre_completo 
+--------------+-----------------
+(0 rows)
+
+ numero_visita | documento_id 
+---------------+--------------
+(0 rows)
+
+
+=====================================================
+PASO 2: INICIAR TRANSACCIÓN Y FORZAR ERROR
+=====================================================
+BEGIN
+INSERT 0 1
+ERROR:  new row for relation "atencion" violates check constraint "atencion_clasificacion_triage_check"
+DETAIL:  Failing row contains (V-TEST-FAIL, 9999, 1, null, 2026-11-11 05:21:57.453034, null, null, null, null, null, 9, null, E, null, EN_CURSO, null, 2026-11-11 05:21:57.453034).
+ROLLBACK
+
+=====================================================
+PASO 3: ESTADO POSTERIOR AL ERROR (Verificar Rollback total)
+=====================================================
+ documento_id | nombre_completo 
+--------------+-----------------
+(0 rows)
+
+ numero_visita | documento_id 
+---------------+--------------
+(0 rows)
+
+=====================================================
+CONCLUSION: Atomicidad demostrada. No queda ningún registro parcial.
+=====================================================

@@ -1,0 +1,1626 @@
+{
+  "info": {
+    "_postman_id": "ae33387f-0d4d-5b1a-b9ae-67c16271928a",
+    "name": "Plataforma de Interoperabilidad Clínica · Red de IPS",
+    "description": "Colección de pruebas del parcial final de Sistemas Distribuidos.\n\nSedes: 1 Sincelejo (PostgreSQL), 2 Cartagena (MongoDB), 3 Corozal (PostgreSQL). HSB en {{hsb}}, API y vistas en {{api}}, HAPI FHIR R4 en {{fhir}}.\n\nEjecute las carpetas en orden (Run collection). Los mensajes oficiales del docente vienen de ejemplos/ sin modificar. Si el sistema ya tenía los ejemplos cargados, el bus responde 'duplicado': las pruebas lo aceptan porque eso demuestra la idempotencia.\n\nPruebas que necesitan apagar contenedores (reintento con HAPI caído, mensaje muerto, caída de una sede, alteración de la auditoría) están en el README y en docs/guion_demostracion.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "token_medico",
+      "value": ""
+    },
+    {
+      "key": "token_paciente",
+      "value": ""
+    },
+    {
+      "key": "token_admision",
+      "value": ""
+    },
+    {
+      "key": "token_auditor",
+      "value": ""
+    },
+    {
+      "key": "token_admin",
+      "value": ""
+    },
+    {
+      "key": "token_admin_sede2",
+      "value": ""
+    },
+    {
+      "key": "usuario_nuevo",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Salud y métricas",
+      "description": "GET /health y /metrics de cada servicio (requisito no funcional).",
+      "item": [
+        {
+          "name": "HSB /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{hsb}}/health",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Reporta las 3 sedes con su motor', () => { pm.expect(Object.keys(r.dependencias.sedes)).to.have.length(3); pm.expect(r.dependencias.sedes.sede_2.motor).to.eql('mongodb'); });",
+                  "pm.test('Reporta HAPI FHIR', () => pm.expect(r.dependencias).to.have.property('hapi_fhir_r4'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "HSB /metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{hsb}}/metrics",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Expone latencia, % fallidos, duplicados y mensajes por estado', () => {",
+                  "  ['latencia_media_ms','porcentaje_fallidos','total_duplicados_detectados','mensajes_ultimo_minuto','mensajes_por_estado_persistidos']",
+                  "    .forEach(k => pm.expect(r).to.have.property(k)); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "API /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/health",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('200 y 3 sedes', () => { pm.response.to.have.status(200); pm.expect(r.nodos_activos).to.match(/\\/3$/); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "API /metrics (cobertura FHIR y auditoría)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/metrics",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Cobertura FHIR por sede', () => pm.expect(Object.keys(r.cobertura_fhir_por_sede)).to.have.length(3));",
+                  "pm.test('Cadena de auditoría íntegra', () => pm.expect(r.auditoria_cadena_integra).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "HAPI FHIR CapabilityStatement",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{fhir}}/metadata",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('FHIR 4.0.1', () => pm.expect(pm.response.json().fhirVersion).to.eql('4.0.1'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. HSB · mensajes oficiales del docente",
+      "description": "Resultados esperados de ejemplos/LEEME.md.",
+      "item": [
+        {
+          "name": "01 ADT^A01 válido · sede 2 (MongoDB)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{hsb}}/hsb/hl7",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "MSH|^~\\&|HIS_SEDE2|SEDE2|HSB|CENTRAL|20261107101500||ADT^A01|MSG-0001|P|2.5\rPID|1||1007^^^HIS||Rojas^Andrea||19900214|F\rPV1|1|O|||||MED-02^Ruiz^Mateo||||||||||||V-S2-0101|||||||||||||||||||||||||202611071015\rDG1|1||J45.9^Asma^I10||20261107|A\r"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Entregado (o duplicado si ya existía)', () => { pm.expect(['entregado','duplicado','reintentando']).to.include(r.estado); });",
+                  "pm.test('Mensaje MSG-0001', () => pm.expect(r.mensaje_id).to.eql('MSG-0001'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "01 reenviado · idempotencia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{hsb}}/hsb/hl7",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "MSH|^~\\&|HIS_SEDE2|SEDE2|HSB|CENTRAL|20261107101500||ADT^A01|MSG-0001|P|2.5\rPID|1||1007^^^HIS||Rojas^Andrea||19900214|F\rPV1|1|O|||||MED-02^Ruiz^Mateo||||||||||||V-S2-0101|||||||||||||||||||||||||202611071015\rDG1|1||J45.9^Asma^I10||20261107|A\r"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('El bus responde duplicado', () => pm.expect(r.estado).to.eql('duplicado'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "02 ORU^R01 laboratorio · sede 1 (PostgreSQL)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{hsb}}/hsb/hl7",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "MSH|^~\\&|HIS_SEDE1|SEDE1|HSB|CENTRAL|20261107113000||ORU^R01|MSG-0002|P|2.5\rPID|1||1001^^^HIS||Perez^Carlos||19800412|M\rPV1|1|E|||||MED-01^Vega^Laura||||||||||||V-S1-0150|||||||||||||||||||||||||202611071100\rOBR|1|||718-7^Hemoglobina^LN\rOBX|1|NM|718-7^Hemoglobina^LN||13.8|g/dL|||||F\r"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Entregado (o duplicado)', () => { pm.expect(['entregado','duplicado','reintentando']).to.include(r.estado); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "03 ADT^A01 inválido · 3 motivos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{hsb}}/hsb/hl7",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "MSH|^~\\&|HIS_SEDE3|SEDE3|HSB|CENTRAL|20261107120000||ADT^A01|MSG-0003|P|2.5\rPID|1||ABC123^^^HIS||Lora^Pedro||19851130|X\rPV1|1|O|||||MED-01^Vega^Laura||||||||||||V-S3-0200|||||||||||||||||||||||||202611071200\rDG1|1||DIARREA^Diarrea^L||20261107|A\r"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('422 rechazado', () => { pm.response.to.have.status(422); pm.expect(r.estado).to.eql('rechazado'); });",
+                  "pm.test('Exactamente 3 motivos', () => pm.expect(r.motivos).to.have.length(3));",
+                  "pm.test('Documento, sexo y diagnóstico', () => { const t = r.motivos.join(' | ');",
+                  "  ['documento no numérico','sexo no válido','sin mapeo a CIE-10'].forEach(x => pm.expect(t).to.include(x)); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "04 CSV legado · sede 3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/csv"
+              }
+            ],
+            "url": "{{hsb}}/hsb/csv?sede=3",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "documento;nombre;sexo;nacimiento;dx_local;fecha;triage;profesional\n1008;Camila Suarez Pineda;F;1996-02-10;DIARREA;2026-11-07T08:30;3;MED-01\n1009;Ricardo Mendoza Lara;M;1971-07-19;HIPERTENSION;2026-11-07T09:10;;MED-02\n1010;Sofia Blanco Mesa;F;2004-12-01;ASMA;2026-11-07T09:45;4;MED-01\n1011;Tomas Ortiz Vega;M;1988-05-23;DOLOR MISTERIOSO;2026-11-07T10:05;2;MED-02\n12;Nombre Corto;M;1990-01-01;CEFALEA;2026-11-07T10:30;;MED-01\n"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('5 filas', () => pm.expect(r.total_filas).to.eql(5));",
+                  "pm.test('3 válidas (entregadas o duplicadas): 1008, 1009, 1010', () =>",
+                  "  pm.expect(r.total_entregados + r.total_duplicados).to.eql(3));",
+                  "pm.test('2 rechazadas: dx sin mapeo y documento de 2 dígitos', () => {",
+                  "  pm.expect(r.total_rechazados).to.eql(2);",
+                  "  const t = JSON.stringify(r.rechazados); pm.expect(t).to.include('sin mapeo'); pm.expect(t).to.include('2 dígitos'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Traductor universal de 57 campos",
+      "description": "Mensaje HL7 con todos los campos de la Res. 866 (segmentos Z) y registro JSON.",
+      "item": [
+        {
+          "name": "ADT^A03 con los 57 campos · sede 1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{hsb}}/hsb/hl7",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "MSH|^~\\&|HIS_SEDE1|SEDE1|HSB|CENTRAL|20261108090000||ADT^A03|MSG-0057|P|2.5\rPID|1||1020^^^HIS^CC||Martinez Ruiz^Lucia Fernanda||19880315|F|||Calle 10 # 5-20^^Sincelejo^^^CO^^^70001||3005550101^^^lucia.martinez@correo.test|||||||||05||||||CO\rNK1|1|Martinez^Jorge|PAR||3005550102\rPV1|1|E|||||MED-01^Vega^Laura|||||||02|||||V-S1-0157|||||||||||||||||01||||||||202611080900|202611081730\rPV2|||^Dolor torácico opresivo de inicio súbito\rIN1|1|||Nueva EPS\rZPI|02|Enfermera|N|08||Zenú|01\rZPV|01|202611080905|2\rDG1|1||I20.9^Angina de pecho, no especificada^I10||20261108|A|||||||||1\rDG1|2||I20.9^Angina de pecho, no especificada^I10||20261108|F|||||||||1\rDG1|3||I10^Hipertensión esencial^I10||20261108|F|||||||||2\rDG1|4||E11.9^Diabetes mellitus tipo 2^I10||20261108|F|||||||||3\rDG1|5||E78.5^Hiperlipidemia, no especificada^I10||20261108|F|||||||||4\rORC|NW|||||||||||MED-01\rRXE|^Cada 24 horas^D30|^Ácido acetilsalicílico 100 mg tableta|100||mg|||||30\rRXR|PO\rZRX|04\rAL1|1|DA|^Penicilina\rZEG||01|3|0|Padre con infarto agudo de miocardio a los 55 años|Turnos nocturnos y estrés laboral|Dra. Laura Vega\r"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Entregado (o duplicado)', () => { pm.expect(['entregado','duplicado','reintentando']).to.include(r.estado); });",
+                  "if (r.recursos_fhir) pm.test('Genera MedicationRequest y AllergyIntolerance', () => {",
+                  "  const t = r.recursos_fhir.join(' '); pm.expect(t).to.include('MedicationRequest'); pm.expect(t).to.include('AllergyIntolerance'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Registro JSON por número de campo · sede 2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{hsb}}/hsb/json?sede=2",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_mensaje\": \"PRUEBA_POSTMAN\",\n  \"registro\": {\n    \"1\": \"CC\",\n    \"2\": \"{{doc_json}}\",\n    \"3\": \"CO\",\n    \"4\": \"Lucía Pérez Gómez\",\n    \"5\": \"1990-05-17\",\n    \"8\": \"F\",\n    \"13\": \"CO\",\n    \"14\": \"13001\",\n    \"16\": \"Coosalud EPS\",\n    \"17\": \"2026-11-11T09:30\",\n    \"18\": \"01\",\n    \"19\": \"01\",\n    \"20\": \"01\",\n    \"21\": \"Dolor abdominal\",\n    \"23\": \"3\",\n    \"34\": \"K29.7\",\n    \"51\": \"01\",\n    \"52\": \"Calle 30 # 10-20, Cartagena\",\n    \"53\": \"3001234567\"\n  }\n}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('doc_json', String(Math.floor(70000000 + Math.random()*9999999)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Entregado en la sede 2', () => pm.expect(r.estado).to.eql('entregado'));",
+                  "pm.test('Paciente y atención publicados en FHIR', () => {",
+                  "  pm.expect(r.recursos_fhir.join(' ')).to.include('Patient/pac-'); pm.expect(r.recursos_fhir.join(' ')).to.include('Condition/'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Catálogo de los 57 campos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{hsb}}/hsb/catalogo",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('57 campos con destino HL7/CSV/PostgreSQL/MongoDB/FHIR', () => {",
+                  "  pm.expect(r.total).to.eql(57); ['hl7','pg','mongo','fhir'].forEach(k => pm.expect(r.campos[13]).to.have.property(k)); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Cola del bus",
+      "description": "Estados persistidos en la base de cada sede.",
+      "item": [
+        {
+          "name": "Mensajes recientes de las 3 sedes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{hsb}}/hsb/mensajes?limite=20",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Lista mensajes con estado y motor', () => { pm.expect(r.mensajes.length).to.be.above(0);",
+                  "  pm.expect(r.mensajes[0]).to.have.property('estado'); pm.expect(r.mensajes[0]).to.have.property('motor'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Mensajes rechazados (con motivo)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{hsb}}/hsb/mensajes?estado=RECHAZADO",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Ninguno se pierde: todos guardan motivo', () => r.mensajes.forEach(m => pm.expect(m.motivo_rechazo).to.be.a('string')));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Reencolar un mensaje que no está muerto",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{hsb}}/hsb/reencolar/MSG-0001",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Informa que no está MUERTO', () => pm.expect(pm.response.text()).to.include('no está MUERTO'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Autenticación",
+      "description": "Un token JWT por rol (se guardan como variables de la colección).",
+      "item": [
+        {
+          "name": "Iniciar sesión · médico (medico_mateo)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/auth/login",
+            "description": "Obtiene el JWT del rol médico (cookie access_token) y lo guarda en la variable token_medico.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "medico_mateo"
+                },
+                {
+                  "key": "password",
+                  "value": "Medico123!"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Credenciales aceptadas (303)', () => pm.response.to.have.status(303));",
+                  "const c = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value).join(';');",
+                  "const m = c.match(/access_token=([^;]+)/);",
+                  "pm.test('Entrega el token JWT', () => pm.expect(m, 'cookie access_token').to.not.be.null);",
+                  "if (m) pm.collectionVariables.set('token_medico', m[1].replace(/^\"|\"$/g, ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "Iniciar sesión · paciente (paciente_carlos)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/auth/login",
+            "description": "Obtiene el JWT del rol paciente (cookie access_token) y lo guarda en la variable token_paciente.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "paciente_carlos"
+                },
+                {
+                  "key": "password",
+                  "value": "Paciente123!"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Credenciales aceptadas (303)', () => pm.response.to.have.status(303));",
+                  "const c = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value).join(';');",
+                  "const m = c.match(/access_token=([^;]+)/);",
+                  "pm.test('Entrega el token JWT', () => pm.expect(m, 'cookie access_token').to.not.be.null);",
+                  "if (m) pm.collectionVariables.set('token_paciente', m[1].replace(/^\"|\"$/g, ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "Iniciar sesión · admisionista (admision_laura)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/auth/login",
+            "description": "Obtiene el JWT del rol admisionista (cookie access_token) y lo guarda en la variable token_admision.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "admision_laura"
+                },
+                {
+                  "key": "password",
+                  "value": "Admision123!"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Credenciales aceptadas (303)', () => pm.response.to.have.status(303));",
+                  "const c = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value).join(';');",
+                  "const m = c.match(/access_token=([^;]+)/);",
+                  "pm.test('Entrega el token JWT', () => pm.expect(m, 'cookie access_token').to.not.be.null);",
+                  "if (m) pm.collectionVariables.set('token_admision', m[1].replace(/^\"|\"$/g, ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "Iniciar sesión · auditor (auditor_elena)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/auth/login",
+            "description": "Obtiene el JWT del rol auditor (cookie access_token) y lo guarda en la variable token_auditor.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "auditor_elena"
+                },
+                {
+                  "key": "password",
+                  "value": "Auditor123!"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Credenciales aceptadas (303)', () => pm.response.to.have.status(303));",
+                  "const c = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value).join(';');",
+                  "const m = c.match(/access_token=([^;]+)/);",
+                  "pm.test('Entrega el token JWT', () => pm.expect(m, 'cookie access_token').to.not.be.null);",
+                  "if (m) pm.collectionVariables.set('token_auditor', m[1].replace(/^\"|\"$/g, ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "Iniciar sesión · administrador general (admin_plataforma)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/auth/login",
+            "description": "Obtiene el JWT del rol administrador general (cookie access_token) y lo guarda en la variable token_admin.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "admin_plataforma"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin123!"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Credenciales aceptadas (303)', () => pm.response.to.have.status(303));",
+                  "const c = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value).join(';');",
+                  "const m = c.match(/access_token=([^;]+)/);",
+                  "pm.test('Entrega el token JWT', () => pm.expect(m, 'cookie access_token').to.not.be.null);",
+                  "if (m) pm.collectionVariables.set('token_admin', m[1].replace(/^\"|\"$/g, ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "Iniciar sesión · administrador sede 2 (admin_cartagena)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/auth/login",
+            "description": "Obtiene el JWT del rol administrador sede 2 (cookie access_token) y lo guarda en la variable token_admin_sede2.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "admin_cartagena"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin123!"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Credenciales aceptadas (303)', () => pm.response.to.have.status(303));",
+                  "const c = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').map(h => h.value).join(';');",
+                  "const m = c.match(/access_token=([^;]+)/);",
+                  "pm.test('Entrega el token JWT', () => pm.expect(m, 'cookie access_token').to.not.be.null);",
+                  "if (m) pm.collectionVariables.set('token_admin_sede2', m[1].replace(/^\"|\"$/g, ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "Credenciales inválidas",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/auth/login",
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "medico_mateo"
+                },
+                {
+                  "key": "password",
+                  "value": "mala"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Consulta unificada y FHIR",
+      "description": "Historia del paciente 1001 en las 3 sedes y 2 motores; Bundle validado por HAPI.",
+      "item": [
+        {
+          "name": "Historia unificada de 1001 (médico)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/pacientes/1001/historia",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_medico}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('Registros en las 3 sedes', () => pm.expect(r.sedes_con_registros).to.have.members([1,2,3]));",
+                  "pm.test('Atenciones de PostgreSQL y de MongoDB', () => { const m = r.atenciones.map(a => a.motor_origen);",
+                  "  pm.expect(m).to.include('postgresql'); pm.expect(m).to.include('mongodb'); });",
+                  "pm.test('100 % de los campos obligatorios', () => pm.expect(r.cobertura_57.porcentaje_obligatorios).to.eql(100));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Bundle FHIR de 1001",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/pacientes/1001/bundle",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_medico}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('Bundle transaction con PUT', () => { pm.expect(b.type).to.eql('transaction');",
+                  "  b.entry.forEach(e => pm.expect(e.request.method).to.eql('PUT')); });",
+                  "pm.collectionVariables.set('bundle_1001', JSON.stringify(b));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Validar el Bundle en HAPI ($validate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "url": "{{fhir}}/Bundle/$validate",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{{bundle_1001}}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "const errores = (r.issue || []).filter(i => ['error','fatal'].includes(i.severity));",
+                  "pm.test('0 errores de validación', () => pm.expect(errores).to.have.length(0));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Patient 1007 en HAPI: uno solo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{fhir}}/Patient?identifier=1007&_summary=count",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Sin duplicados', () => pm.expect(pm.response.json().total).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Observation LOINC 718-7 = 13,8 g/dL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{fhir}}/Observation/obs-V-S1-0150-718-7",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const o = pm.response.json();",
+                  "pm.test('718-7 en g/dL', () => { pm.expect(o.code.coding[0].code).to.eql('718-7'); pm.expect(o.valueQuantity.unit).to.eql('g/dL'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Permisos por rol (permitido y denegado)",
+      "description": "Matriz de la Fase 4: un 403 deja evento en la auditoría.",
+      "item": [
+        {
+          "name": "Paciente ve su propia historia",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/pacientes/1001/historia",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_paciente}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Paciente pide la historia de otro (1002)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/pacientes/1002/historia",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_paciente}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Admisionista pide una historia clínica",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/pacientes/1001/historia",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admision}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Auditor consulta la historia (reporte)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/pacientes/1001/historia",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_auditor}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Médico intenta ver eventos de auditoría",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/auditoria/eventos",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_medico}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Sin token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/pacientes/1001/historia",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Auditoría encadenada",
+      "description": "Verificador de la cadena SHA-256 y últimos eventos (incluye los 403 de la carpeta anterior).",
+      "item": [
+        {
+          "name": "Verificar la cadena",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/auditoria/verificar",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_auditor}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Cadena íntegra', () => pm.expect(r.cadena_integra).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Últimos eventos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/auditoria/eventos?limite=20",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_auditor}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Los accesos denegados quedaron registrados', () =>",
+                  "  pm.expect(r.map(e => e.tipo_evento)).to.include('ACCESO_DENEGADO'));",
+                  "pm.test('Cada evento tiene su hash', () => r.forEach(e => pm.expect(e.hash_propio).to.have.length(64)));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Panel de administración y usuarios",
+      "description": "Alcance: el administrador de una sede solo gestiona su sede; el auditor solo consulta.",
+      "item": [
+        {
+          "name": "Resumen del panel",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/panel/resumen",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Indicadores, sedes, bus, FHIR y auditoría', () => ['kpis','sedes','bus','fhir','auditoria'].forEach(k => pm.expect(r).to.have.property(k)));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Buscar paciente en las 3 sedes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/panel/pacientes?q=1001",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('1001 aparece en 3 sedes', () => pm.expect(r.pacientes[0].sedes).to.have.length(3));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Admin sede 2 crea un médico en su sede",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{api}}/api/panel/usuarios",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{usuario_nuevo}}\",\n  \"nombre_completo\": \"Dra. Postman Prueba\",\n  \"rol\": \"medico\",\n  \"documento_id\": \"MED-PM\",\n  \"sede_id\": 2\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin_sede2}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('usuario_nuevo', 'med.pm' + Date.now().toString().slice(-6));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Creado con contraseña temporal', () => { pm.expect(r.ok).to.eql(true); pm.expect(r.clave_temporal).to.have.length(12); });",
+                  "pm.test('Origen PANEL, creado por admin_cartagena', () => { pm.expect(r.usuario.origen).to.eql('PANEL'); pm.expect(r.usuario.creado_por).to.eql('admin_cartagena'); pm.expect(r.usuario.debe_cambiar_clave).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Admin sede 2 intenta crear en la sede 1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{api}}/api/panel/usuarios",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"intruso.sede1\",\n  \"nombre_completo\": \"X\",\n  \"rol\": \"medico\",\n  \"documento_id\": \"M\",\n  \"sede_id\": 1\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin_sede2}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Auditor intenta crear un usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{api}}/api/panel/usuarios",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"intento.auditor\",\n  \"nombre_completo\": \"X\",\n  \"rol\": \"medico\",\n  \"documento_id\": \"M\",\n  \"sede_id\": 2\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_auditor}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Desactivar el médico creado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{api}}/api/panel/usuarios/{{usuario_nuevo}}/estado",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"activo\": false}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin_sede2}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Inactivo', () => pm.expect(pm.response.json().usuario.activo).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Listar usuarios (admin sede 2 ve solo su sede)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/api/panel/usuarios",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_admin_sede2}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Todos de la sede 2', () => r.usuarios.forEach(u => pm.expect(u.sede_id).to.eql(2)));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    }
+  ]
+}

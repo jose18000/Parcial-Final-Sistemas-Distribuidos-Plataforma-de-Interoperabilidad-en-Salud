@@ -94,9 +94,32 @@
 
 ---
 
+## Mejora v2 · 57 campos, traductor universal y sedes heterogéneas
+
+| Fecha | Integrante | Actividad | IA / Código abierto |
+|-------|-----------|-----------|---------------------|
+| 2026-11-10 | B — Sharit Manjarrez | Traductor universal de los 57 campos de la Res. 866 (`traductor/`): catálogo único HL7 v2 / CSV / PostgreSQL / MongoDB / FHIR, dominios con sinónimos, segmentos Z (ZPI, ZPV, ZRX, ZEG) y cobertura de campos | Claude Code (Anthropic) — diseño y código revisados y probados por el integrante |
+| 2026-11-10 | B — Sharit Manjarrez | Motores heterogéneos por sede según indicación del docente: Sede 1 y 3 PostgreSQL, Sede 2 MongoDB (`db/repositorio.py`, `db/sede2/init-mongo.js`); consulta unificada en paralelo | Claude Code (Anthropic) |
+| 2026-11-10 | B — Sharit Manjarrez | HSB: cola persistente con trabajador de reintentos en segundo plano, recuperación tras reinicio, errores de datos directo a MUERTO, entrada `/hsb/json` | Claude Code (Anthropic) |
+| 2026-11-10 | B — Sharit Manjarrez | Auditoría persistida en `pg_central`, normalizador FHIR ampliado (MedicationRequest, AllergyIntolerance, Practitioner, Organization), vistas por rol con escritura real vía HSB, pruebas (36) | Claude Code (Anthropic) |
+
+| 2026-11-11 | B — Sharit Manjarrez | Panel de administración en vivo (`/panel`), generador de datos de prueba por el bus (`scripts/generar_datos_prueba.py`), gestión de usuarios en `pg_central` (administrador general y por sede, cuenta automática del paciente, cambio de contraseña obligatorio) y rediseño de interfaz con tono de sistema hospitalario | Claude Code (Anthropic); imagen de portada del login generada con el asistente ATLAS |
+
+### Uso declarado de IA en la mejora v2
+- **Herramienta:** Claude Code (Anthropic).
+- **Uso:** Diseño e implementación del traductor de 57 campos, adaptador MongoDB, cola de reintentos, auditoría persistente, reescritura de vistas y pruebas.
+- **Revisión humana y pruebas en vivo (Kali Linux, Docker):** los 4 ejemplos oficiales dan el resultado del `LEEME.md`; reenviar el 01 responde duplicado con un solo Patient 1007 en HAPI; con HAPI apagado el mensaje pasó a REINTENTANDO y se entregó solo al volver (7 intentos, 2 s → 64 s); apagar `mongo_sede2` deja la historia con 2 sedes marcada incompleta; un `UPDATE` manual en `evento_auditoria` lo detecta el verificador en el índice exacto; el Bundle unificado de 1001 (26 recursos) valida en HAPI sin errores.
+- **Código abierto:** PyMongo (Apache 2.0), MongoDB 7 (SSPL, imagen oficial), además de lo ya declarado.
+
+---
+
 ## Correcciones entre fases
 
 | Fase corregida | Fecha | Motivo | Corrección aplicada |
 |---------------|-------|--------|---------------------|
-| — | — | — | — |
+| 4 | 2026-11-10 | La auditoría vivía solo en memoria: no había tabla para alterar a mano y se perdía al reiniciar | Tabla `evento_auditoria` en `pg_central` con candado de inserción; el hash cubre todos los campos |
+| 3 | 2026-11-10 | Los reintentos bloqueaban la petición (1+2+4 s) y HAPI tarda más de un minuto en volver: la prueba obligatoria terminaba en MUERTO | Cola persistente con trabajador en segundo plano; espera 2 s → 64 s configurable |
+| 3 | 2026-11-10 | Reentregar un mensaje duplicaba diagnósticos y observaciones (INSERT sin llave) | Ids deterministas y UPSERT por llave en PostgreSQL y MongoDB |
+| 5 | 2026-11-10 | La tabla de mensajes de Admisión eran 3 filas escritas en el código; el médico no guardaba diagnóstico ni egreso | Monitor real desde `/hsb/mensajes`; escrituras del médico viajan al HSB y devuelven sello |
+| 2 | 2026-11-10 | El esquema cubría ~15 de los 57 campos y todas las sedes usaban el mismo motor | Esquema de 57 campos; Sede 2 en MongoDB |
 

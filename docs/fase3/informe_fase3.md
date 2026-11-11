@@ -9,6 +9,15 @@
 **Fecha:** Noviembre 2026  
 **Versión del informe:** Fase 3 de 5 (Ponderación: 1,25 / 5,0)
 
+> **Actualización v2 (10–11 de noviembre de 2026).** Correcciones registradas en la bitácora: los
+> reintentos bloqueaban la petición y con HAPI caído más de un minuto la prueba terminaba en MUERTO;
+> reentregar un mensaje podía duplicar diagnósticos. Desde la v2: el bus traduce primero con el
+> **traductor universal de 57 campos** y luego verifica idempotencia y valida; la cola es persistente
+> con un hilo de reintentos en segundo plano (2 → 64 s, 7 intentos); los errores de datos van directo
+> a MUERTO; hay entrada `/hsb/json`; la Sede 2 es MongoDB. Las líneas afectadas abajo están marcadas
+> con "v2". Ver el [informe final](../informe_final_v7.md) y el
+> [diagrama de estados](../fase1/diagramas/04_estados_mensaje.md).
+
 ---
 
 ## 1. Selección y Justificación de la Herramienta del Bus
@@ -46,7 +55,7 @@ El HSB actúa como mediador central desacoplado entre los sistemas legados y la 
                                             │
                                 ┌───────────┴───────────┐
                                 ▼                       ▼
-                        [ 1. HAPI FHIR R4 ]     [ 2. Nodo PostgreSQL ]
+                        [ 1. HAPI FHIR R4 ]     [ 2. Base de la sede ]
                             (Puerto 8090)           (Sede 1, 2 o 3)
                                 │                       │
                         (Fallo: Reintentos)     (Persistencia Local)
@@ -56,9 +65,10 @@ El HSB actúa como mediador central desacoplado entre los sistemas legados y la 
 
 1. `POST /hsb/hl7`: Acepta mensajes en texto plano HL7 v2 (`ADT^A01` para admisiones clínicas y `ORU^R01` para reportes de laboratorio).
 2. `POST /hsb/csv?sede=N`: Ingesta por lotes de CSV legados delimitados por `;` para la sede especificada (1: Sincelejo, 2: Cartagena, 3: Corozal).
-3. `GET /health`: Chequea el estado del HSB y la conectividad activa con HAPI FHIR y los tres nodos PostgreSQL.
+3. `GET /health`: Chequea el estado del HSB y la conectividad activa con HAPI FHIR y las tres sedes (v2: dos PostgreSQL y un MongoDB).
 4. `GET /metrics`: Expone estadísticas operacionales en tiempo real.
-5. `POST /hsb/reencolar/{mensaje_id}`: Permite a un operador o auditor reactivar un mensaje que agotó reintentos y quedó en estado `MUERTO`.
+5. `POST /hsb/reencolar/{mensaje_id}`: Permite a un operador reactivar un mensaje que quedó en estado `MUERTO`.
+6. **v2:** `POST /hsb/json?sede=N` (registro JSON; lo usan las vistas de admisión y médico), `GET /hsb/mensajes` (monitor de estados de las 3 sedes) y `GET /hsb/catalogo` (los 57 campos y su mapeo).
 
 ---
 
@@ -111,15 +121,16 @@ La suite de pruebas de integración (`tests/fase3/test_hsb_integration.py`) veri
 ### 5.1 Idempotencia Persistente
 - Para mensajes HL7, la clave de unicidad combina el identificador de mensaje `MSH-10` y el hash SHA-256 de la carga útil completa.
 - Al enviar `01_adt_a01_valido_sede2.hl7` por primera vez, el HSB responde `200 OK { "estado": "entregado" }`.
-- Al reenviar el mismo archivo de inmediato, el HSB consulta la tabla `mensaje_bus`, detecta la preexistencia del hash y responde inmediatamente con `HTTP 200 { "estado": "duplicado", "motivo": "Mensaje procesado previamente. Idempotencia garantizada" }`. En la base de datos de Cartagena **sólo existe un registro del paciente 1007**.
+- Al reenviar el mismo archivo de inmediato, el HSB consulta la tabla `mensaje_bus`, detecta la preexistencia del hash y responde inmediatamente con `HTTP 200 { "estado": "duplicado", "motivo": "Mensaje recibido previamente: no se vuelve a crear el paciente ni la atención." }`. En la base de datos de Cartagena (MongoDB desde la v2) **sólo existe un documento del paciente 1007**, y en HAPI un solo `Patient/pac-1007`.
 
 ### 5.2 Cola de Reintentos y Mensajes Muertos (Dead Letter Queue)
 Cuando el servidor HAPI FHIR se detiene temporalmente (`docker compose stop hapi-fhir`):
 1. El HSB detecta la interrupción de conexión y asigna el estado `REINTENTANDO` (intento 1).
 2. Aplica **espera creciente exponencial**:
-   $$\text{Espera}(n) = \text{BASE} \times 2^{n-1} \implies 1\text{ s}, 2\text{ s}, 4\text{ s}, 8\text{ s}$$
+   $$\text{Espera}(n) = \text{BASE} \times 2^{n-1}$$
+   v1: base 1 s (1, 2, 4, 8 s) con la petición bloqueada. **v2:** base 2 s (`HSB_RETRY_BASE_SECONDS=2`) → 2, 4, 8, 16, 32, 64 s, en un hilo en segundo plano; la petición responde `202 reintentando` de inmediato.
 3. Si el servicio HAPI FHIR se restablece (`docker compose start hapi-fhir`), el reintento se ejecuta con éxito, envía el Bundle con `PUT` y pasa a estado `ENTREGADO`.
-4. Si se supera el límite de 4 intentos sin éxito, el mensaje pasa a estado **`MUERTO`** (Dead Letter Queue), evitando ciclos infinitos de consumo de CPU. El mensaje queda preservado con su payload y motivo de fallo, y puede reactivarse mediante `POST /hsb/reencolar/{id}`.
+4. Si se supera el límite de intentos sin éxito (v1: 4; **v2: 7**, `HSB_MAX_RETRIES`), el mensaje pasa a estado **`MUERTO`** (Dead Letter Queue), evitando ciclos infinitos de consumo de CPU. El mensaje queda preservado con su payload y motivo de fallo, y puede reactivarse mediante `POST /hsb/reencolar/{id}`.
 
 ---
 
@@ -146,5 +157,5 @@ Cuando el servidor HAPI FHIR se detiene temporalmente (`docker compose stop hapi
    - El HSB recupera los mensajes pendientes o recibe el reenvío por parte del sistema emisor legado.
    - El HSB retoma la secuencia programada: vuelve a intentar el envío a HAPI FHIR.
    - **Por qué NO duplica en HAPI FHIR:** El Bundle transaccional utiliza operaciones **`PUT` con identificadores deterministas** basados en el documento del paciente y el número de visita (`Patient/pac-1007`, `Encounter/enc-V-S2-0101`). En el estándar FHIR R4, un `PUT` sobre un recurso existente es estrictamente idempotente: actualiza el recurso con el mismo contenido sin generar nuevos identificadores autonuméricos.
-   - **Por qué NO duplica en PostgreSQL:** Al completarse la llamada a HAPI, el bus ejecuta la inserción en el nodo de la sede utilizando cláusulas `ON CONFLICT (documento_id) DO UPDATE` y `ON CONFLICT (numero_visita) DO NOTHING`. El registro clínico se consolida de forma íntegra y el mensaje pasa formalmente a estado `ENTREGADO`.
+   - **Por qué NO duplica en PostgreSQL:** Al completarse la llamada a HAPI, el bus ejecuta la inserción en el nodo de la sede utilizando UPSERT por llaves deterministas (`ON CONFLICT (documento_id)`, `(numero_visita)`, `(diagnostico_id)`, `(tecnologia_id)` `DO UPDATE` en PostgreSQL; `replace_one` por `_id` en MongoDB desde la v2). Al reiniciar, `recuperar_pendientes()` relee de las sedes los mensajes en `TRANSFORMADO` o `REINTENTANDO` y los vuelve a programar. El registro clínico se consolida de forma íntegra y el mensaje pasa formalmente a estado `ENTREGADO`.
 
