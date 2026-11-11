@@ -1,0 +1,333 @@
+﻿GUION DE LA SUSTENTACIÓN — Plataforma distribuida de interoperabilidad clínica
+Red de IPS Sincelejo · Cartagena · Corozal · Sistemas Distribuidos · UNIAJS
+A = Jose Guillermo Canchila   ·   B = Sharith Javier Manjarrez
+Duración: 15 minutos de presentación y demo + 10 de preguntas (≈1 minuto por diapositiva).
+============================================================================================
+
+DIAPOSITIVA 1 — Portada
+Presenta A (Jose).
+--------------------------------------------------------------------------------------------
+
+  Buenos días. Somos Jose Guillermo Canchila y Sharith Javier Manjarrez y vamos a
+  sustentar la plataforma distribuida de interoperabilidad clínica para la red de IPS de
+  Sincelejo, Cartagena y Corozal. En 15 minutos vamos a alternar diapositivas cortas con
+  la demostración en vivo, en el orden de la guía de la Fase 5: arranque limpio, cobertura
+  en 0 %, mensajes HL7 y CSV, duplicado, caída de una sede, auditoría alterada y consulta
+  unificada. Mientras hablo, B deja corriendo el arranque limpio (docker compose down -v
+  && docker compose up -d --build), porque el servidor FHIR tarda unos 90 segundos en
+  responder.
+
+============================================================================================
+
+DIAPOSITIVA 2 — Una historia clínica partida en tres sedes
+Presenta A (Jose).
+--------------------------------------------------------------------------------------------
+
+  El problema: la red tiene tres sedes y cada una conserva su sistema legado, con su
+  propia base y su propio motor. Sincelejo y Corozal usan PostgreSQL; Cartagena, MongoDB.
+  Además envían en formatos distintos: Sincelejo manda resultados de laboratorio en HL7
+  (mensaje ORU^R01), Cartagena manda admisiones en HL7 (ADT^A01) y Corozal exporta un CSV
+  separado por punto y coma. El resultado es que la historia de un mismo paciente queda
+  partida en tres. La meta fue unificarla con los 57 campos de la Resolución 866 de 2021 y
+  publicarla en FHIR R4, sin pedirle a ninguna sede que cambie su sistema.
+
+============================================================================================
+
+DIAPOSITIVA 3 — Siete contenedores, un solo comando
+Presenta A (Jose), mientras el servidor FHIR termina de arrancar (bloque 1 del guion).
+--------------------------------------------------------------------------------------------
+
+  Son siete contenedores que suben con un solo comando desde volúmenes vacíos: docker
+  compose down -v && docker compose up -d --build. Las tres bases de las sedes, cada una
+  con su motor: Sincelejo (contenedor pg_sede1), Cartagena (mongo_sede2) y Corozal
+  (pg_sede3). El bus de integración (contenedor hsb_bus, puerto 8001) recibe HL7, CSV y
+  JSON, traduce al registro de 57 campos, valida, evita duplicados y reintenta. Primero
+  publica en el servidor FHIR (contenedor hapi_fhir_r4, puerto 8090) y después guarda en
+  la sede. El portal web y API (contenedor api_gateway, puerto 8000) valida el token de
+  sesión y los permisos y sirve las cuatro vistas; la consulta unificada pregunta a las
+  tres sedes en paralelo. La base central (contenedor pg_central) guarda la auditoría
+  encadenada y las cuentas. Regla de oro: ninguna vista habla con las bases; lecturas por
+  la API, escrituras por el bus.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    ¿qué escalaría primero con 100 veces más mensajes?
+  ► RESPUESTA:
+    el bus. Pondríamos un broker (Kafka o RabbitMQ, una partición por sede) y varias
+    réplicas del bus; ya son casi sin estado porque el registro de mensajes vive en cada
+    sede. Después varios servidores FHIR y al final réplicas de lectura en las sedes.
+
+============================================================================================
+
+DIAPOSITIVA 4 — Por qué cada sede tiene su propio motor
+Presenta B (Sharith).
+--------------------------------------------------------------------------------------------
+
+  El escenario dice que cada sede conserva su sistema, y el docente pidió que no todas
+  usaran el mismo motor. Elegimos MongoDB para Cartagena porque es el caso más distinto de
+  un relacional: un documento por paciente, con las atenciones dentro y otros nombres de
+  campo. Si la plataforma funciona con eso, no depende de un esquema único. Para el bus y
+  la consulta los dos motores se ven igual: un repositorio con la misma interfaz
+  (RepositorioPostgres y RepositorioMongo). La atomicidad es local: en PostgreSQL, una
+  transacción; en MongoDB, una escritura de un documento (replace_one). No usamos
+  transacción distribuida (2PC). En las lecturas elegimos disponibilidad: si una sede no
+  responde, se devuelve lo de las otras con el reporte marcado como incompleto.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    si la sede 2 cae a mitad de una transacción, ¿qué garantiza y qué sacrifica?
+  ► RESPUESTA:
+    dentro de la sede, o queda el documento nuevo o el anterior, nunca media atención.
+    Entre el servidor FHIR y la sede hay consistencia eventual con reintentos que no
+    duplican. Se sacrifica consistencia mientras dura la partición: el médico no ve
+    Cartagena, pero el sistema le avisa.
+
+============================================================================================
+
+DIAPOSITIVA 5 — Un traductor universal de 57 campos
+Presenta B (Sharith).
+--------------------------------------------------------------------------------------------
+
+  El corazón del bus es un catálogo único de 57 campos (traductor/catalogo_57.py): para
+  cada campo dice de dónde sale en HL7 o CSV, en qué columna queda en PostgreSQL, en qué
+  ruta en MongoDB y en qué elemento de FHIR. Ejemplo, campo 14, municipio de residencia:
+  llega en el segmento del paciente de HL7, campo 11, componente 9 (PID-11.9), con el
+  código DANE 70001; el traductor llena el registro común; en Cartagena queda en
+  residencia.municipio_dane, en las sedes PostgreSQL en usuario.municipio_residencia, y en
+  FHIR en la dirección del paciente, elemento district. Lo que HL7 v2.5 no trae viaja en
+  cuatro segmentos Z que acordamos para el proyecto. Con el mensaje completo cubrimos 56
+  de 57 campos; solo falta el 42, diagnóstico de muerte, porque el paciente sale vivo.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    ¿cómo maneja el traductor esquemas distintos?
+  ► RESPUESTA:
+    ninguna función tiene nombres de columna escritos a mano; a_postgres, a_mongo y sus
+    inversas los toman del catálogo. Hay una prueba de ida y vuelta registro común →
+    MongoDB → registro común que conserva los 57.
+
+============================================================================================
+
+DIAPOSITIVA 6 — El bus: cada mensaje tiene un estado
+Presenta A (Jose).
+--------------------------------------------------------------------------------------------
+
+  Cada mensaje recorre estados que quedan guardados en el registro de mensajes de su sede
+  (tabla mensaje_bus): recibido, validado, transformado y entregado. Lo que no cumple las
+  reglas se rechaza con todos sus motivos. Antes de validar, el bus busca el número del
+  mensaje (campo MSH-10 de HL7) o la huella SHA-256 del contenido: si ya lo entregó,
+  responde duplicado sin tocar nada. Primero publica en el servidor FHIR y luego guarda en
+  la sede. Si alguno no responde, el mensaje pasa a reintentando: la petición ya respondió
+  202 y un hilo en segundo plano reintenta con esperas de 2 a 64 segundos, 7 intentos. Si
+  se agotan queda muerto, y se puede reencolar con POST /hsb/reencolar/{id}. Los errores
+  de datos (un 4xx del servidor FHIR o una restricción violada en la sede) van directo a
+  muerto, porque el mismo dato fallará igual en el intento 7.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    ¿qué pasa si el bus muere entre «FHIR OK» y «sede OK»?
+  ► RESPUESTA:
+    el mensaje quedó en TRANSFORMADO con su contenido original. Al arrancar,
+    recuperar_pendientes() lo relee de las sedes y lo reprograma; FHIR reemplaza el
+    mismo recurso y la sede guarda sin duplicar (UPSERT), así que termina ENTREGADO. Lo
+    medimos: recuperó 2 mensajes pendientes.
+
+============================================================================================
+
+DIAPOSITIVA 7 — FHIR R4: un paquete por mensaje, sin duplicados
+Presenta B (Sharith).
+--------------------------------------------------------------------------------------------
+
+  Cada mensaje se convierte en un paquete FHIR (un Bundle de tipo transaction). Todas sus
+  entradas usan PUT con nombres fijos: Patient/pac más el documento, Encounter/enc más el
+  número de visita, y así. Por eso reenviar el mismo mensaje no crea otro paciente:
+  reemplaza el mismo recurso. La historia del paciente 1001, armada con atenciones de las
+  tres sedes, da un paquete de 26 recursos; lo pasamos por la validación oficial del
+  servidor FHIR (operación $validate de HAPI) y salió con 0 errores. Las 33 advertencias
+  vienen de extensiones y sistemas de códigos propios que el servidor no puede resolver.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    ¿por qué reenviar un mensaje no crea un paciente duplicado?
+  ► RESPUESTA:
+    tres capas, y cualquiera sola basta: el bus reconoce el número del mensaje (MSH-10)
+    o la huella en el registro de mensajes de la sede; el paquete FHIR usa PUT a nombres
+    fijos; y la sede guarda por la misma llave (ON CONFLICT en PostgreSQL, _id en
+    MongoDB). Medido: 1 solo Patient 1007 y 1 documento en MongoDB tras el reenvío.
+
+============================================================================================
+
+DIAPOSITIVA 8 — Seguridad: permisos en la API, auditoría encadenada
+Presenta B (Sharith).
+--------------------------------------------------------------------------------------------
+
+  Los permisos se validan en la API, no en la pantalla: cada petición trae un token de
+  sesión (JWT) y cada ruta declara qué roles la pueden usar. Hay cuatro roles más el
+  administrador, que puede ser general o de una sola sede. Si alguien intenta algo que no
+  le toca, recibe 403 y el intento queda registrado como ACCESO_DENEGADO. La auditoría
+  vive en la base central (pg_central) y es una cadena: cada evento guarda el hash del
+  anterior y su propio hash SHA-256 sobre todos sus campos. Y al admitir a un paciente
+  nuevo se le crea su cuenta con una contraseña temporal que se muestra una sola vez; en
+  el primer ingreso debe cambiarla.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    ¿cómo sabe que la auditoría no fue alterada?
+  ► RESPUESTA:
+    el verificador recorre la cadena y en cada evento comprueba el índice, el enlace con
+    el anterior y recalcula el hash con los datos actuales. Un UPDATE cambia el
+    contenido pero no puede rehacer el hash sin rehacer toda la cadena; lo detectamos en
+    el índice exacto 3. Si piden cambiar un rol en vivo: en app/main.py, vista_reporte,
+    quitar "paciente" de requerir_roles, docker compose up -d --build api, y el paciente
+    recibe 403.
+
+============================================================================================
+
+DIAPOSITIVA 9 — Cuatro vistas, una por rol
+Presenta A (Jose).
+--------------------------------------------------------------------------------------------
+
+  Estas son las cuatro vistas que pide la guía, cada una con lo que su rol puede ver. El
+  paciente ve su historia unificada, ordenada por fecha y con la sede de cada atención,
+  descarga su paquete FHIR y ve quién accedió a su historia. La admisionista busca por
+  documento y ve en qué sedes existe el paciente, admite y sigue el estado de sus mensajes
+  en el bus; no ve diagnósticos. El médico consulta la historia unificada y registra
+  diagnósticos, órdenes y egresos; cada escritura devuelve un sello, que es el hash del
+  evento de auditoría. El Reporte de HC agrupa por sede, muestra la cobertura de los 57
+  campos, el sello del reporte y la pestaña de estado de la plataforma. Todo esto se ve en
+  vivo en el bloque final de la demo.
+
+============================================================================================
+
+DIAPOSITIVA 10 — Panel de administración en vivo
+Presenta B (Sharith).
+--------------------------------------------------------------------------------------------
+
+  El administrador tiene un panel que se actualiza solo: sedes activas, estado del
+  servidor FHIR, cobertura FHIR, mensajes recibidos, entregados y rechazados, latencia
+  media del bus y estado de la cadena de auditoría. Abajo, cada sede con su motor, su
+  latencia y su cobertura FHIR. En la sección de usuarios se crean cuentas por rol y por
+  sede, se desactivan o se restablece la contraseña; un administrador de sede solo ve y
+  crea usuarios de su sede, y el auditor puede consultar pero no gestionar. Estas cuentas
+  viven en la base central (pg_central), con contraseña PBKDF2, para que apagar una sede
+  no deje a nadie sin poder entrar.
+
+============================================================================================
+
+DIAPOSITIVA 11 — Resiliencia: probada apagando piezas
+Presenta B (Sharith). Corresponde a los bloques 5, 6 y 7 de la demo.
+--------------------------------------------------------------------------------------------
+
+  Probamos la resiliencia apagando piezas de verdad. Primero, docker stop mongo_sede2: la
+  consulta del paciente 1001 responde con Sincelejo y Corozal, marca el reporte como
+  incompleto y el estado de salud (/health) pasa a DEGRADED con 2 de 3 nodos; al encender
+  el contenedor vuelve Cartagena. Segundo, con el servidor FHIR apagado (docker compose
+  stop hapi-fhir) enviamos un mensaje: el bus responde reintentando, sigue intentando con
+  esperas crecientes y lo entregó solo en el intento 7, a los 132 segundos, sin duplicar.
+  Tercero, si el servidor FHIR tarda más que la ventana de reintentos el mensaje queda
+  MUERTO; con el servidor de nuevo arriba, POST /hsb/reencolar/{id} lo entregó en 2,6
+  segundos.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    ¿por qué los errores de datos no se reintentan?
+  ► RESPUESTA:
+    reintentar sirve para fallas transitorias. Una restricción violada o un rechazo 4xx
+    del servidor FHIR fallará igual en el intento 7; solo gastaría dos minutos de cola.
+    Esos se marcan como permanentes y van directo a MUERTO con su motivo.
+
+============================================================================================
+
+DIAPOSITIVA 12 — Resultados medidos
+Presenta A (Jose).
+--------------------------------------------------------------------------------------------
+
+  Estos números son medidos en Kali Linux, en una máquina virtual de 3,8 GB con Docker 28,
+  el 10 y 11 de noviembre. El paquete FHIR del paciente 1001 pasó la validación oficial
+  ($validate) con 0 errores. El mensaje completo cubre 56 de 57 campos y la historia real
+  de 1001, desde tres sedes y dos motores, 52 de 57, siempre con el 100 % de los
+  obligatorios. Reenviar el ejemplo 01 dejó un solo Patient 1007. La demo de ACID en
+  PostgreSQL (db/demo_acid.sql) hace rollback completo cuando se viola un CHECK. Pasan las
+  44 pruebas automatizadas. Para las capturas cargamos 148 mensajes: 135 entregados, 8
+  rechazados a propósito y 5 duplicados. Y el UPDATE sobre la auditoría se detectó en el
+  índice 3. Lo que no medimos de forma sistemática es la latencia y los mensajes por
+  minuto bajo carga; los contadores de /metrics son de una sesión de demo, no una prueba
+  de carga.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    ¿cómo se calcula la cobertura?
+  ► RESPUESTA:
+    hay dos. La FHIR por sede es pacientes con fhir_patient_id sobre pacientes de la
+    sede (0 % al inicio). La de 57 campos cuenta un campo como cubierto si tiene valor
+    en el usuario o en alguna atención de cualquier sede.
+
+============================================================================================
+
+DIAPOSITIVA 13 — Guion de la demostración en vivo
+Presentan A y B. Esta diapositiva queda de fondo como mapa de la demo.
+--------------------------------------------------------------------------------------------
+
+  PASOS DE LA DEMO:
+    • 1 (A): docker compose down -v && docker compose up -d --build; docker compose ps;
+      curl -s http://localhost:8001/health | jq.
+    • 2 (B): entrar como auditor_elena en localhost:8000/login y abrir
+      localhost:8000/reporte?pestana=tablero: cobertura FHIR 0 %.
+    • 3 (A): POST /hsb/hl7 con ejemplos 01, 02 y 03 y POST /hsb/csv?sede=3 con el
+      ejemplo 04 (3 entregados, 2 rechazados); la cobertura sube: sede 1 50 %, sede 2
+      33,3 %, sede 3 75 %.
+    • 4 (B): reenviar el ejemplo 01 → duplicado; curl
+      "localhost:8090/fhir/Patient?identifier=1007&_summary=count" da 1, y
+      countDocuments en mongo_sede2 da 1.
+    • Intercalado (A): docker compose stop hapi-fhir, enviar
+      tests/datos/06_adt_a03_57_campos_sede1.hl7 (queda reintentando) y docker compose
+      start hapi-fhir.
+    • 5 (B): como medico_mateo buscar 1001; docker stop mongo_sede2; reporte incompleto
+      y /health DEGRADED 2/3; docker start mongo_sede2.
+    • 6 (B): como paciente_carlos abrir /api/pacientes/1002/historia → 403; docker exec
+      -it pg_central psql -U clinica_user -d clinica_central -c "UPDATE evento_auditoria
+      SET usuario_sistema='intruso' WHERE indice = 3"; el tablero marca el índice 3.
+    • 7 (A+B): A abre localhost:8000/reporte?buscar_doc=1001 (3 sedes, 52/57, sello); B
+      registra un diagnóstico CIE-10 como médico y muestra el sello.
+
+  ► SI ALGO FALLA:
+
+  si el mensaje de 57 campos queda MUERTO, curl -X POST
+  localhost:8001/hsb/reencolar/MSG-0057; si el ejemplo 01 sale duplicado la primera vez,
+  faltó el down -v.
+
+============================================================================================
+
+DIAPOSITIVA 14 — Limitaciones y trabajo futuro
+Presenta A (Jose).
+--------------------------------------------------------------------------------------------
+
+  Queremos ser honestos con lo que el prototipo no resuelve. MongoDB corre sin replica
+  set: no hay conmutación por fallo ni transacciones multi-documento. El bus de
+  integración (hsb_bus, puerto 8001) no exige autenticación; solo el portal y API la
+  exige. Hay un solo servidor FHIR (hapi_fhir_r4); ya guarda sus datos en PostgreSQL
+  dentro de la base central, así que no se pierden al reiniciar, pero no tiene réplica. No
+  medimos latencia ni mensajes por minuto con una prueba de carga. Y aunque dejamos
+  manifiestos de Kubernetes para Minikube (infra/k8s), no presentamos evidencia de que
+  corran. El trabajo futuro sale directo de esa lista: replica set, Keycloak con TLS,
+  varios servidores FHIR sobre PostgreSQL, una prueba de carga y un pipeline de CI que
+  corra las 44 pruebas.
+
+  ► PREGUNTA PROBABLE DEL PROFE:
+    ¿qué pasa si alguien con acceso a la base central rehace toda la cadena?
+  ► RESPUESTA:
+    puede hacerlo; por eso el trabajo futuro incluye anclar periódicamente el último
+    hash fuera del sistema, por ejemplo en Hyperledger Fabric.
+
+============================================================================================
+
+DIAPOSITIVA 15 — Cierre
+Presenta B (Sharith).
+--------------------------------------------------------------------------------------------
+
+  Para cerrar: un catálogo de 57 campos, un registro común y entregas que no duplican
+  bastaron para unificar tres sedes con motores distintos, sin transacción distribuida y
+  sin tocar los sistemas legados. La demo está corriendo en http://192.168.1.94:8000 y el
+  código está en github.com/jose18000/Parcial-Final-Sistemas-Distribuidos-Plataforma-de-
+  Interoperabilidad-en-Salud con la etiqueta v1.0; el README tiene todos los pasos y los
+  usuarios de prueba. Gracias. Quedamos atentos a sus preguntas; las respondemos los dos.
+
+  ► REPARTO DE PREGUNTAS:
+
+  Reparto de preguntas (para no pisarse): A lidera CAP con la sede caída, auditoría,
+  escalar 100×, bus caído entre FHIR y sede, errores de datos. B lidera duplicados, cambio
+  de rol en vivo, por qué MongoDB, viaje de un campo y cobertura.
+
+============================================================================================
