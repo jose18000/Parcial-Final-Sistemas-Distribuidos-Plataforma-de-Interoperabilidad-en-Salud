@@ -3,206 +3,306 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Portal del Paciente · Historia Clínica Unificada</title>
-  <style>
-    :root {
-      --bg: #f8f9fa;
-      --card-bg: #ffffff;
-      --text: #212529;
-      --primary: #0056b3;
-      --border: #dee2e6;
-      --accent: #28a745;
-      --warning: #ffc107;
-    }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      margin: 0;
-      padding: 1.5rem;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--card-bg);
-      padding: 1rem 1.5rem;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-bottom: 1.5rem;
-    }
-    .badge-paciente {
-      background: #e2e3e5;
-      color: #383d41;
-      padding: 0.35rem 0.75rem;
-      border-radius: 12px;
-      font-weight: 600;
-      font-size: 0.85rem;
-    }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-    h2 {
-      margin-top: 0;
-      font-size: 1.25rem;
-      color: #0b2e4f;
-      border-bottom: 2px solid #e9ecef;
-      padding-bottom: 0.5rem;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 1rem;
-    }
-    th, td {
-      border: 1px solid var(--border);
-      padding: 0.75rem;
-      text-align: left;
-    }
-    th {
-      background: #f1f3f5;
-    }
-    .btn {
-      display: inline-block;
-      padding: 0.5rem 1rem;
-      background: var(--primary);
-      color: #fff;
-      text-decoration: none;
-      border-radius: 4px;
-      font-weight: 600;
-      border: none;
-      cursor: pointer;
-    }
-    .btn:hover, .btn:focus {
-      background: #004085;
-      outline: 2px solid var(--primary);
-    }
-    .alerta {
-      background: #fff3cd;
-      color: #856404;
-      padding: 0.75rem;
-      border-radius: 4px;
-      border: 1px solid #ffeeba;
-      margin-bottom: 1rem;
-    }
-    .sede-tag {
-      background: #e7f5ff;
-      color: #1864ab;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      font-weight: 600;
-      font-size: 0.85rem;
-    }
-  </style>
+  <meta name="color-scheme" content="light dark">
+  <title>Mi historia clínica · Portal del paciente</title>
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
+  <link rel="stylesheet" href="/static/plataforma.css">
+  <script src="/static/plataforma.js" defer></script>
 </head>
-<body>
-  <header class="header">
-    <div>
-      <h1 style="margin:0; font-size: 1.4rem;">Portal Personal de Salud</h1>
-      <small>Paciente: <strong>{{ usuario.nombre_completo }}</strong> (Doc: {{ usuario.documento_id }})</small>
+<body data-rol="paciente">
+{% import '_marco.html' as marco %}
+{# ── Ayudas de presentación ───────── #}
+{% macro ico(n, cls='') -%}
+  {%- set P = {
+    'db': '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+    'hoja': '<path d="M12 2c4 4 6 8 5 12-1 3-3 5-5 6-2-1-4-3-5-6-1-4 1-8 5-12zM12 7v15"/>',
+    'check': '<path d="M20 6 9 17l-5-5"/>',
+    'alerta': '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>',
+    'x': '<path d="M18 6 6 18M6 6l12 12"/>',
+    'info': '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+    'escudo': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    'escudo-ok': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+    'salir': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    'buscar': '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+    'descargar': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    'imprimir': '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/>',
+    'actividad': '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+    'servidor': '<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/>',
+    'reloj': '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    'bus': '<path d="M4 7h11M4 12h16M4 17h11"/><path d="m17 4 3 3-3 3M13 14l3 3-3 3"/>',
+    'candado': '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    'usuario': '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    'capas': '<path d="m12 2 10 5-10 5L2 7zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
+    'historia': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15h6"/>',
+    'ojo': '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>',
+    'pulso': '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+    'mas': '<path d="M12 5v14M5 12h14"/>',
+    'red': '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M7 7.5 10.5 17M17 7.5 13.5 17M7.5 6h9"/>',
+    'medicamento': '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7zM8.5 8.5l7 7"/>',
+    'salida': '<path d="M5 12h14M12 5l7 7-7 7"/>'
+  } -%}
+  <svg class="ico {{ cls }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{{ P[n]|safe }}</svg>
+{%- endmacro %}
+{% macro etq(dominio, v) -%}
+  {%- if v is none or v == '' -%}—
+  {%- elif DOMINIOS.get(dominio) -%}{{ DOMINIOS[dominio]['codigos'].get(v|string, v) }}
+  {%- else -%}{{ v }}{%- endif -%}
+{%- endmacro %}
+{% macro fecha(f) -%}{{ (f|string)[:16]|replace('T', ' ') if f else '—' }}{%- endmacro %}
+{% macro motor(m) -%}
+  {%- if m == 'mongodb' -%}<span class="badge b-mongo">{{ ico('hoja') }}MongoDB</span>
+  {%- elif m == 'postgresql' -%}<span class="badge b-pg">{{ ico('db') }}PostgreSQL</span>
+  {%- else -%}<span class="badge b-neutro">{{ m or 'motor —' }}</span>{%- endif -%}
+{%- endmacro %}
+{% macro iniciales(nombre) -%}
+  {%- set pp = ((nombre or '')|string).split() or ['?'] -%}
+  {{- ((pp[0][:1]) ~ (pp[1][:1] if pp|length > 1 else ''))|upper -}}
+{%- endmacro %}
+{% macro chip_sello(h) -%}
+  {%- if h -%}<span class="sello-chip corto" data-copiar="{{ h }}">{{ ico('candado') }}<code>{{ h }}</code></span>{%- else -%}—{%- endif -%}
+{%- endmacro %}
+{% macro triage(v) -%}
+  {%- if v is not defined or v is none or v == '' -%}—{%- else -%}<span class="triage triage-{{ v }}">{{ etq('clasificacion_triage', v) }}</span>{%- endif -%}
+{%- endmacro %}
+{% macro atencion_detalle(at, h=3) %}
+  {% set id_at = 'at-' ~ ((at.numero_visita or 'sin-numero')|string|replace(' ', '-')) %}
+  <article class="atencion" aria-labelledby="{{ id_at }}">
+    <div class="atencion-cab">
+      <h{{ h }} id="{{ id_at }}"><span class="fecha">{{ ico('reloj') }} {{ fecha(at.fecha_ingreso) }}<span class="sr-only"> · </span></span>Visita <span class="mono">{{ at.numero_visita or '—' }}</span></h{{ h }}>
+      <div class="atencion-insignias">
+        <span class="badge b-sede">{{ at.sede_origen or ('Sede ' ~ (at.sede_id or '—')) }}</span>
+        {% if at.estado %}<span class="badge b-neutro">Estado: {{ at.estado }}</span>{% endif %}
+      </div>
     </div>
-    <div>
-      <span class="badge-paciente" aria-label="Rol actual">Rol: Paciente</span>
-      <a href="/auth/logout" class="btn" style="background:#dc3545; margin-left: 0.5rem;">Cerrar Sesión</a>
-    </div>
-  </header>
+    <dl class="datos">
+      <div><dt>Entidad de salud</dt><dd>{{ at.entidad_salud or '—' }}</dd></div>
+      <div><dt>Modalidad</dt><dd>{{ etq('modalidad_entrega', at.modalidad_entrega) }}</dd></div>
+      <div><dt>Entorno</dt><dd>{{ etq('entorno_atencion', at.entorno_atencion) }}</dd></div>
+      <div><dt>Vía de ingreso</dt><dd>{{ etq('via_ingreso', at.via_ingreso) }}</dd></div>
+      <div><dt>Causa de la atención</dt><dd>{{ at.causa_atencion or '—' }}</dd></div>
+      <div><dt>Triage</dt><dd>{{ triage(at.clasificacion_triage) }}{% if at.fecha_triage %} · {{ fecha(at.fecha_triage) }}{% endif %}</dd></div>
+      {% if at.clase_atencion %}<div><dt>Clase de atención</dt><dd>{{ at.clase_atencion }}</dd></div>{% endif %}
+      {% if at.comunidad_etnica %}<div><dt>Comunidad étnica</dt><dd>{{ at.comunidad_etnica }}</dd></div>{% endif %}
+      {% if at.codigo_profesional %}<div><dt>Profesional</dt><dd>{{ at.codigo_profesional }}</dd></div>{% endif %}
+    </dl>
 
-  <main>
-    {% if not historia.reporte_completo %}
-    <div class="alerta" role="alert">
-      ⚠️ <strong>Aviso de disponibilidad:</strong> {{ historia.aviso_incompletitud }}
+    <h{{ h + 1 }} class="sub-t">Diagnósticos (CIE-10)</h{{ h + 1 }}>
+    {% if at.diagnosticos %}
+    <div class="tabla-scroll"><table>
+      <caption class="sr-only">Diagnósticos de la visita {{ at.numero_visita }}</caption>
+      <thead><tr><th scope="col">Código</th><th scope="col">Descripción</th><th scope="col">Rol</th><th scope="col">Tipo</th><th scope="col">Fecha</th></tr></thead>
+      <tbody>
+      {% for dx in at.diagnosticos %}
+        <tr>
+          <th scope="row" class="mono">{{ dx.cie10_codigo or '—' }}</th>
+          <td>{{ dx.descripcion_cie10 or '—' }}</td>
+          <td>{% if dx.rol %}<span class="badge {{ 'b-info' if dx.rol == 'INGRESO' else ('b-ok' if dx.rol == 'EGRESO' else 'b-neutro') }}">{{ dx.rol }}</span>{% else %}—{% endif %}</td>
+          <td>{{ etq('tipo_diagnostico', dx.tipo_diagnostico) }}</td>
+          <td>{{ fecha(dx.fecha_diagnostico) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="muted">Sin diagnósticos registrados.</p>{% endif %}
+
+    {% set labs = [] %}{% set meds = [] %}
+    {% for t in (at.tecnologias or []) %}
+      {% if t.tipo == 'MEDICAMENTO' or (t.descripcion_medicamento and not t.loinc_codigo) %}{% set _ = meds.append(t) %}{% else %}{% set _ = labs.append(t) %}{% endif %}
+    {% endfor %}
+
+    <h{{ h + 1 }} class="sub-t">Laboratorios (LOINC)</h{{ h + 1 }}>
+    {% if labs %}
+    <div class="tabla-scroll"><table>
+      <caption class="sr-only">Laboratorios de la visita {{ at.numero_visita }}</caption>
+      <thead><tr><th scope="col">Prueba</th><th scope="col">LOINC</th><th scope="col">Resultado</th><th scope="col">Fecha de toma</th></tr></thead>
+      <tbody>
+      {% for t in labs %}
+        <tr>
+          <th scope="row">{{ t.descripcion_loinc or '—' }}</th>
+          <td class="mono">{{ t.loinc_codigo or '—' }}</td>
+          <td><strong>{{ t.valor if t.valor is not none else '—' }}</strong> {{ t.unidad or '' }}</td>
+          <td>{{ fecha(t.fecha_toma) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="muted">Sin laboratorios registrados.</p>{% endif %}
+
+    <h{{ h + 1 }} class="sub-t">Medicamentos</h{{ h + 1 }}>
+    {% if meds %}
+    <div class="tabla-scroll"><table>
+      <caption class="sr-only">Medicamentos de la visita {{ at.numero_visita }}</caption>
+      <thead><tr><th scope="col">Medicamento</th><th scope="col">Dosis</th><th scope="col">Vía</th><th scope="col">Frecuencia</th><th scope="col">Días</th><th scope="col">Unidades</th><th scope="col">Finalidad</th><th scope="col">Profesional</th></tr></thead>
+      <tbody>
+      {% for t in meds %}
+        <tr>
+          <th scope="row">{{ t.descripcion_medicamento or '—' }}</th>
+          <td>{{ t.dosis or '—' }}</td>
+          <td>{{ etq('via_administracion', t.via_administracion) }}</td>
+          <td>{{ t.frecuencia or '—' }}</td>
+          <td>{{ t.dias_tratamiento if t.dias_tratamiento is not none else '—' }}</td>
+          <td>{{ t.unidades_aplicadas if t.unidades_aplicadas is not none else '—' }}</td>
+          <td>{{ etq('finalidad_tecnologia', t.finalidad_tecnologia) }}</td>
+          <td>{{ t.id_personal_salud or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="muted">Sin medicamentos formulados.</p>{% endif %}
+
+    <h{{ h + 1 }} class="sub-t">Egreso</h{{ h + 1 }}>
+    {% set eg = at.egreso or {} %}
+    {% if eg %}
+    <dl class="datos">
+      <div><dt>Fecha de salida</dt><dd>{{ fecha(eg.fecha_salida) }}</dd></div>
+      <div><dt>Condición de salida</dt><dd>{{ etq('condicion_salida', eg.condicion_salida) }}</dd></div>
+      {% if eg.diagnostico_muerte %}<div><dt>Diagnóstico de muerte</dt><dd class="mono">{{ eg.diagnostico_muerte }}</dd></div>{% endif %}
+      <div><dt>Código del prestador</dt><dd>{{ eg.codigo_prestador or '—' }}</dd></div>
+      <div><dt>Incapacidad</dt><dd>{{ etq('tipo_incapacidad', eg.tipo_incapacidad) }}{% if eg.dias_incapacidad %} · {{ eg.dias_incapacidad }} días{% endif %}</dd></div>
+      {% if eg.dias_lic_maternidad %}<div><dt>Licencia de maternidad</dt><dd>{{ eg.dias_lic_maternidad }} días</dd></div>{% endif %}
+      <div><dt>Alergias</dt><dd>{{ eg.alergias or '—' }}</dd></div>
+      <div><dt>Antecedentes familiares</dt><dd>{{ eg.antecedentes_familiares or '—' }}</dd></div>
+      <div><dt>Riesgos ocupacionales</dt><dd>{{ eg.riesgos_ocupacionales or '—' }}</dd></div>
+      <div><dt>Responsable del egreso</dt><dd>{{ eg.responsable_egreso or '—' }}</dd></div>
+      {% if eg.sello_hash %}<div class="ancho"><dt>Código de verificación</dt><dd>{{ chip_sello(eg.sello_hash) }}</dd></div>{% endif %}
+    </dl>
+    {% else %}<p class="muted"><span class="badge b-info punto">Atención abierta</span> Sin egreso registrado.</p>{% endif %}
+  </article>
+{% endmacro %}
+
+  {{ marco.cabecera(usuario, 'historia') }}
+
+  <div class="encabezado">
+    <div class="encabezado-in">
+      <div>
+        <span class="cejilla">{{ ico('usuario') }} Portal del paciente</span>
+        <h1>Mi historia clínica</h1>
+        <p>{{ usuario.nombre_completo or usuario.username }} · Documento {{ usuario.documento_id or '—' }}</p>
+      </div>
+      <div class="acciones">
+        <a href="/api/pacientes/{{ usuario.documento_id }}/bundle" class="btn" download="bundle-pac-{{ usuario.documento_id }}.json">{{ ico('descargar') }}Descargar mi historia (FHIR)</a>
+        <a href="/reporte" class="btn btn-sec">{{ ico('imprimir') }}Ver mi reporte</a>
+      </div>
+    </div>
+  </div>
+
+  <main id="contenido" class="contenedor">
+    {% set p = historia.paciente if historia and historia.paciente else none %}
+
+    {% if historia and not historia.reporte_completo %}
+    <div class="alerta-grande" role="alert">
+      <span class="icono">{{ ico('alerta', 'ico-lg') }}</span>
+      <div>
+        <h2>Historia incompleta</h2>
+        <p>Una o más sedes de la red no están disponibles en este momento:</p>
+        {% if historia.sedes_no_disponibles %}
+        <ul>
+          {% for sn in historia.sedes_no_disponibles %}
+          <li>{{ sn.nombre or ('Sede ' ~ sn.sede_id) }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        <p>Sus atenciones en esas sedes no aparecen. Intente más tarde.</p>
+      </div>
     </div>
     {% endif %}
 
-    <section class="card" aria-labelledby="sec-resumen">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h2 id="sec-resumen" style="border:none; padding:0; margin:0;">Expediente Clínico Unificado</h2>
-        <a href="/api/pacientes/{{ usuario.documento_id }}/bundle" class="btn" download="bundle-paciente-{{ usuario.documento_id }}.json">
-          📥 Descargar mi Bundle FHIR R4
-        </a>
+    <section class="card" aria-labelledby="sec-datos">
+      <div class="paciente-cab">
+        <span class="avatar" aria-hidden="true">{{ iniciales((p.nombre_completo if p else none) or usuario.nombre_completo or usuario.username) }}</span>
+        <div class="nombre">
+          <h2 id="sec-datos">Mis datos</h2>
+          <div class="meta">
+            <span><strong>{{ (p.nombre_completo if p else none) or usuario.nombre_completo or usuario.username }}</strong></span>
+            {% if historia %}{% for s in (historia.sedes_con_registros or []) %}<span class="badge b-sede">{{ SEDES[s]['nombre'] if s in SEDES else 'Sede ' ~ s }}</span>{% endfor %}{% endif %}
+          </div>
+        </div>
       </div>
-      <p style="margin-top:0.5rem; color:#666;">
-        Mostrando todas las atenciones recibidas en la red (Sincelejo, Cartagena y Corozal) ordenadas cronológicamente.
-      </p>
-
-      <table>
-        <caption class="sr-only" style="text-align:left; font-weight:bold; margin-bottom:0.5rem;">Historial de atenciones médicas</caption>
-        <thead>
-          <tr>
-            <th scope="col">Fecha / Hora</th>
-            <th scope="col">Sede</th>
-            <th scope="col">Visita</th>
-            <th scope="col">Clase</th>
-            <th scope="col">Diagnóstico Principal</th>
-            <th scope="col">Pruebas / Laboratorios</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for at in historia.atenciones %}
-          <tr>
-            <td>{{ at.fecha_ingreso }}</td>
-            <td><span class="sede-tag">{{ at.sede_origen }}</span></td>
-            <td><code>{{ at.numero_visita }}</code></td>
-            <td>{{ at.clase_atencion }}</td>
-            <td>
-              {% for dx in at.diagnosticos %}
-                <strong>{{ dx.cie10_codigo }}</strong>: {{ dx.descripcion_cie10 }}<br>
-              {% else %}
-                <em style="color:#888;">Sin diagnósticos registrados</em>
-              {% endfor %}
-            </td>
-            <td>
-              {% for tech in at.tecnologias %}
-                {{ tech.descripcion_loinc }}: <strong>{{ tech.valor }} {{ tech.unidad }}</strong><br>
-              {% else %}
-                <em style="color:#888;">Ninguna</em>
-              {% endfor %}
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="6" style="text-align:center; color:#777;">No se registran atenciones clínicas para su documento.</td>
-          </tr>
+      {% if p %}
+      <dl class="datos">
+        <div><dt>Nombre</dt><dd>{{ p.nombre_completo or '—' }}</dd></div>
+        <div><dt>Documento</dt><dd>{{ etq('tipo_documento', p.tipo_documento) }} {{ p.documento_id or historia.documento_id }}</dd></div>
+        <div><dt>Fecha de nacimiento</dt><dd>{{ p.fecha_nacimiento or '—' }}</dd></div>
+        <div><dt>Edad</dt><dd>{{ p.edad if p.edad is not none else '—' }} {{ etq('unidad_edad', p.unidad_edad) if p.unidad_edad else '' }}</dd></div>
+        <div><dt>Sexo</dt><dd>{{ etq('sexo', p.sexo) }}</dd></div>
+        <div><dt>Teléfono</dt><dd>{{ p.telefono or '—' }}</dd></div>
+        <div><dt>Dirección</dt><dd>{{ p.direccion_residencia or '—' }}</dd></div>
+        <div><dt>Municipio DANE</dt><dd>{{ p.municipio_residencia or '—' }}</dd></div>
+        {% if p.entidad %}<div><dt>Entidad</dt><dd>{{ p.entidad }}</dd></div>{% endif %}
+      </dl>
+      {% else %}
+      <p class="muted" style="margin:16px 0 0;">No hay datos registrados a su nombre.</p>
+      {% endif %}
+      {% if historia and historia.inconsistencias_entre_sedes %}
+      <div class="alerta-info" role="note" style="margin:16px 0 0;">
+        {{ ico('info') }}
+        <strong>Sus datos no coinciden entre sedes:</strong>
+        <ul>
+          {% for inc in historia.inconsistencias_entre_sedes %}
+          <li>{{ inc.campo }}:
+            {% for s, v in (inc.valores_por_sede or {}).items() %}{{ SEDES[s]['nombre'] if s in SEDES else 'Sede ' ~ s }} = «{{ v if v is not none else '—' }}»{{ '; ' if not loop.last }}{% endfor %}
+          </li>
           {% endfor %}
-        </tbody>
-      </table>
+        </ul>
+        Solicite la corrección en admisiones.
+      </div>
+      {% endif %}
     </section>
 
-    <section class="card" aria-labelledby="sec-auditoria">
-      <h2 id="sec-auditoria">Trazabilidad de Accesos a mi Información</h2>
-      <p style="color:#666;">Cumplimiento Ley 1581 de 2012 (Habeas Data): Registro inmutable de quién y cuándo ha consultado su historia clínica.</p>
+    <section class="card" aria-labelledby="sec-historia">
+      <div class="card-cab">
+        <h2 id="sec-historia">{{ ico('historia') }}Mi historia clínica</h2>
+        {% if historia %}<span class="badge badge-lg b-info">Atenciones: <strong>{{ historia.total_atenciones_encontradas or (historia.atenciones or [])|length }}</strong></span>{% endif %}
+      </div>
+      {% if historia and historia.atenciones %}
+      <ol class="timeline" aria-label="Atenciones, de la más reciente a la más antigua">
+        {% for at in historia.atenciones %}
+        <li>{{ atencion_detalle(at, 3) }}</li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="muted">No hay atenciones registradas.</p>
+      {% endif %}
+    </section>
+
+    <section class="card" aria-labelledby="sec-accesos">
+      <h2 id="sec-accesos">{{ ico('ojo') }}Accesos a mi historia clínica</h2>
+      <p class="card-sub">Ley 1581 de 2012 (protección de datos personales).</p>
+      <div class="tabla-scroll alta">
       <table>
+        <caption class="sr-only">Accesos a mi historia clínica</caption>
         <thead>
           <tr>
-            <th scope="col">Fecha / Hora (UTC)</th>
-            <th scope="col">Profesional / Sistema</th>
+            <th scope="col">Cuándo</th>
+            <th scope="col">Quién</th>
             <th scope="col">Rol</th>
-            <th scope="col">Acción</th>
-            <th scope="col">Sello Criptográfico (Hash)</th>
+            <th scope="col">Qué hizo</th>
+            <th scope="col">Resultado</th>
+            <th scope="col">Código de verificación</th>
           </tr>
         </thead>
         <tbody>
-          {% for ev in accesos %}
+          {% for ev in (accesos or []) %}
           <tr>
-            <td>{{ ev.timestamp }}</td>
-            <td>{{ ev.usuario_sistema }}</td>
-            <td>{{ ev.rol }}</td>
-            <td>{{ ev.tipo_evento }} ({{ ev.resultado }})</td>
-            <td><code>{{ ev.hash_propio[:16] }}...</code></td>
+            <td class="nowrap">{{ fecha(ev.timestamp) }}</td>
+            <th scope="row">{{ ev.usuario_sistema or '—' }}</th>
+            <td>{{ ev.rol or '—' }}</td>
+            <td>{{ ev.tipo_evento or '—' }}<br><small class="mono muted">{{ ev.recurso_afectado or '' }}</small>
+              {% if ev.detalle is mapping and ev.detalle.accion %}<br><small>Acción: {{ ev.detalle.accion }}</small>{% endif %}</td>
+            <td><span class="badge punto {{ 'b-ok' if ev.resultado == 'EXITOSO' else 'b-err' if ev.resultado in ('FALLIDO', 'DENEGADO') else 'b-neutro' }}">{{ ev.resultado or '—' }}</span></td>
+            <td>{% if ev.hash_propio %}<span class="sello-chip corto" title="{{ ev.hash_propio }}" data-copiar="{{ ev.hash_propio }}" data-copiar-etq="código de verificación">{{ ico('candado') }}<code>{{ ev.hash_propio[:16] }}…</code></span>{% else %}<span class="mono">—</span>{% endif %}</td>
           </tr>
           {% else %}
-          <tr>
-            <td colspan="5" style="text-align:center; color:#777;">No hay accesos previos registrados.</td>
-          </tr>
+          <tr><td colspan="6" class="vacio">No hay accesos registrados.</td></tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </section>
   </main>
+  {{ marco.pie() }}
 </body>
 </html>
-

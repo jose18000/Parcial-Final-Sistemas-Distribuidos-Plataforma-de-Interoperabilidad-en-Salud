@@ -3,165 +3,105 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Acceso Seguro · Plataforma Clínica Distribuida</title>
-  <style>
-    :root {
-      --bg: #f4f6f9;
-      --card-bg: #ffffff;
-      --text: #1a2530;
-      --primary: #0056b3;
-      --primary-hover: #003d80;
-      --border: #d0d7de;
-      --focus-ring: #0056b3;
-      --error: #d9383a;
-    }
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: var(--bg);
-      color: var(--text);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
-      padding: 1rem;
-    }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 2.5rem;
-      width: 100%;
-      max-width: 440px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    }
-    h1 {
-      font-size: 1.5rem;
-      margin-top: 0;
-      color: #0d233a;
-      text-align: center;
-    }
-    p.subtitle {
-      color: #555;
-      font-size: 0.9rem;
-      text-align: center;
-      margin-bottom: 2rem;
-    }
-    .form-group {
-      margin-bottom: 1.25rem;
-    }
-    label {
-      display: block;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-      font-size: 0.95rem;
-    }
-    input[type="text"], input[type="password"] {
-      width: 100%;
-      padding: 0.75rem;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      font-size: 1rem;
-      box-sizing: border-box;
-    }
-    input:focus {
-      outline: 2px solid var(--focus-ring);
-      outline-offset: 2px;
-    }
-    button.btn-primary {
-      width: 100%;
-      padding: 0.85rem;
-      background-color: var(--primary);
-      color: #ffffff;
-      font-size: 1rem;
-      font-weight: 600;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-top: 0.5rem;
-    }
-    button.btn-primary:hover, button.btn-primary:focus {
-      background-color: var(--primary-hover);
-      outline: 2px solid var(--focus-ring);
-    }
-    .alert-error {
-      background-color: #ffebe9;
-      color: var(--error);
-      padding: 0.75rem;
-      border-radius: 4px;
-      margin-bottom: 1rem;
-      border: 1px solid #ffc1c0;
-      font-size: 0.9rem;
-    }
-    .quick-users {
-      margin-top: 2rem;
-      padding-top: 1rem;
-      border-top: 1px solid var(--border);
-      font-size: 0.85rem;
-    }
-    .quick-users h2 {
-      font-size: 0.9rem;
-      margin: 0 0 0.5rem 0;
-      color: #444;
-    }
-    .pill {
-      display: inline-block;
-      padding: 0.3rem 0.6rem;
-      margin: 0.2rem;
-      background: #e9f2ff;
-      color: var(--primary);
-      border: 1px solid #b8daff;
-      border-radius: 12px;
-      cursor: pointer;
-      font-size: 0.8rem;
-    }
-    .pill:hover, .pill:focus {
-      background: #cce2ff;
-    }
-  </style>
+  <meta name="color-scheme" content="light dark">
+  <title>Iniciar sesión · Historia Clínica Electrónica</title>
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
+  <link rel="stylesheet" href="/static/plataforma.css">
 </head>
-<body>
-  <main class="card" role="main">
-    <h1>Acceso Seguro</h1>
-    <p class="subtitle">Red de IPS Sincelejo · Cartagena · Corozal</p>
+<body class="pagina-login">
+{% macro ico(n, cls='') -%}
+  {%- set P = {
+    'usuario': '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    'candado': '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    'alerta': '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+    'entrar': '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/>'
+  } -%}
+  <svg class="ico {{ cls }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{{ P[n]|safe }}</svg>
+{%- endmacro %}
+{% macro chip(usuario, clave, rol, iniciales, titulo) -%}
+  <li><button type="button" class="chip-demo" data-usuario="{{ usuario }}" data-clave="{{ clave }}" aria-pressed="false">
+    <span class="avatar r-{{ rol }}" aria-hidden="true">{{ iniciales }}</span><span class="t"><strong>{{ titulo }}</strong><code>{{ usuario }} · {{ clave }}</code></span></button></li>
+{%- endmacro %}
+  <a class="saltar" href="#acceso">Saltar al formulario de acceso</a>
 
-    {% if error %}
-    <div class="alert-error" role="alert" aria-live="polite">
-      {{ error }}
-    </div>
-    {% endif %}
-
-    <form method="POST" action="/auth/login" aria-label="Formulario de inicio de sesión">
-      <div class="form-group">
-        <label for="username">Usuario del Sistema:</label>
-        <input type="text" id="username" name="username" required autocomplete="username" autofocus>
+  <div class="login">
+    <section class="login-hero" aria-labelledby="titulo-marca">
+      <div class="login-hero-in">
+        <div class="login-logo">
+          <img src="/static/logo.svg" alt="" width="56" height="56">
+        </div>
+        <h1 id="titulo-marca">Red de IPS Sincelejo · Cartagena · Corozal</h1>
+        <p class="lema">Historia clínica segura en toda la red</p>
       </div>
-
-      <div class="form-group">
-        <label for="password">Contraseña:</label>
-        <input type="password" id="password" name="password" required autocomplete="current-password">
-      </div>
-
-      <button type="submit" class="btn-primary">Iniciar Sesión</button>
-    </form>
-
-    <section class="quick-users" aria-label="Usuarios de prueba rápida">
-      <h2>Usuarios de Demostración:</h2>
-      <div>
-        <button type="button" class="pill" onclick="llenar('paciente_carlos', 'Paciente123!')">Paciente (1001)</button>
-        <button type="button" class="pill" onclick="llenar('admision_laura', 'Admision123!')">Admisionista (Sede 2)</button>
-        <button type="button" class="pill" onclick="llenar('medico_mateo', 'Medico123!')">Médico (Sede 2)</button>
-        <button type="button" class="pill" onclick="llenar('auditor_elena', 'Auditor123!')">Auditor (Central)</button>
-      </div>
+      <p class="login-pie">© 2026 · Historia Clínica Electrónica</p>
     </section>
-  </main>
+
+    <main class="login-panel" id="acceso">
+      <div class="login-card">
+        <h2>Iniciar sesión</h2>
+        <p class="sub-login">Historia Clínica Electrónica</p>
+
+        {% if error %}
+        <div class="alerta-err" role="alert">
+          {{ ico('alerta') }}
+          {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/auth/login" aria-label="Inicio de sesión">
+          <div class="campo">
+            <label for="username">Usuario</label>
+            <div class="campo-ico">
+              {{ ico('usuario') }}
+              <input type="text" id="username" name="username" required autocomplete="username" autofocus spellcheck="false" autocapitalize="off">
+            </div>
+          </div>
+
+          <div class="campo">
+            <label for="password">Contraseña</label>
+            <div class="campo-ico">
+              {{ ico('candado') }}
+              <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+          </div>
+
+          <button type="submit" class="btn" id="btn-entrar">{{ ico('entrar') }} Iniciar sesión</button>
+        </form>
+
+        <section class="demo" aria-labelledby="demo-titulo">
+          <h3 id="demo-titulo">Usuarios de prueba</h3>
+          <ul class="demo-lista">
+            {{ chip('paciente_carlos', 'Paciente123!', 'paciente', 'PA', 'Paciente (1001)') }}
+            {{ chip('admision_laura', 'Admision123!', 'admisionista', 'AD', 'Admisionista · Sede 2') }}
+            {{ chip('medico_mateo', 'Medico123!', 'medico', 'MD', 'Médico · Sede 2') }}
+            {{ chip('auditor_elena', 'Auditor123!', 'auditor', 'AU', 'Auditor') }}
+            {{ chip('admin_plataforma', 'Admin123!', 'administrador', 'AP', 'Administrador · Red') }}
+            {{ chip('admin_sincelejo', 'Admin123!', 'administrador', 'S1', 'Administrador · Sede 1') }}
+            {{ chip('admin_cartagena', 'Admin123!', 'administrador', 'S2', 'Administrador · Sede 2') }}
+            {{ chip('admin_corozal', 'Admin123!', 'administrador', 'S3', 'Administrador · Sede 3') }}
+          </ul>
+          <p class="sr-only" id="demo-aviso" role="status" aria-live="polite"></p>
+        </section>
+      </div>
+    </main>
+  </div>
 
   <script>
-    function llenar(user, pwd) {
-      document.getElementById('username').value = user;
-      document.getElementById('password').value = pwd;
-    }
+    (function () {
+      var chips = document.querySelectorAll('.chip-demo');
+      Array.prototype.forEach.call(chips, function (c) {
+        c.addEventListener('click', function () {
+          document.getElementById('username').value = c.getAttribute('data-usuario');
+          document.getElementById('password').value = c.getAttribute('data-clave');
+          Array.prototype.forEach.call(chips, function (o) { o.setAttribute('aria-pressed', o === c ? 'true' : 'false'); });
+          document.getElementById('demo-aviso').textContent = 'Formulario llenado con el usuario ' + c.getAttribute('data-usuario') + '.';
+          document.getElementById('btn-entrar').focus();
+        });
+      });
+    })();
   </script>
 </body>
 </html>
-

@@ -3,265 +3,566 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reporte Integral de HC & Tablero de Estado · Red de IPS</title>
-  <style>
-    :root {
-      --bg: #f8f9fa;
-      --card-bg: #ffffff;
-      --text: #212529;
-      --primary: #0056b3;
-      --border: #dee2e6;
-      --danger: #dc3545;
-      --success: #28a745;
-    }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      margin: 0;
-      padding: 1.5rem;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--card-bg);
-      padding: 1rem 1.5rem;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-bottom: 1.5rem;
-    }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-    h2 {
-      margin-top: 0;
-      color: #0b2e4f;
-      border-bottom: 2px solid #e9ecef;
-      padding-bottom: 0.5rem;
-    }
-    .btn {
-      padding: 0.5rem 1rem;
-      background: var(--primary);
-      color: white;
-      text-decoration: none;
-      border-radius: 4px;
-      font-weight: 600;
-      border: none;
-      cursor: pointer;
-      display: inline-block;
-    }
-    .btn:hover { background: #004085; }
-    .btn-print { background: #6c757d; }
-    .btn-danger { background: var(--danger); }
-    .alerta {
-      background: #fff3cd;
-      color: #856404;
-      padding: 1rem;
-      border-radius: 4px;
-      border: 1px solid #ffeeba;
-      margin-bottom: 1.5rem;
-      font-size: 1rem;
-    }
-    .grid-tablero {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.25rem;
-    }
-    .metric-box {
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 1rem;
-      background: #fafbfc;
-    }
-    .metric-value {
-      font-size: 1.8rem;
-      font-weight: bold;
-      color: var(--primary);
-      margin: 0.5rem 0;
-    }
-    .badge-up { background: #d4edda; color: #155724; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: bold; }
-    .badge-down { background: #f8d7da; color: #721c24; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
-    th, td { border: 1px solid var(--border); padding: 0.6rem; text-align: left; }
-    th { background: #f1f3f5; }
-    @media print {
-      .header, .no-print { display: none !important; }
-      body { padding: 0; }
-    }
-  </style>
+  <meta name="color-scheme" content="light dark">
+  <title>{{ 'Estado de la plataforma' if (pestana == 'tablero' and tablero) else 'Reporte de historia clínica' }} · Historia Clínica Electrónica</title>
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
+  <link rel="stylesheet" href="/static/plataforma.css">
+  <script src="/static/plataforma.js" defer></script>
 </head>
-<body>
-  <header class="header">
-    <div>
-      <h1 style="margin:0; font-size: 1.4rem;">Reporte Unificado & Tablero de Observabilidad</h1>
-      <small>Accedido por: <strong>{{ usuario.nombre_completo }}</strong> (Rol: {{ usuario.rol }})</small>
+<body data-rol="{{ usuario.rol }}">
+{% import '_marco.html' as marco %}
+{# ── Ayudas de presentación ───────── #}
+{% macro ico(n, cls='') -%}
+  {%- set P = {
+    'db': '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+    'hoja': '<path d="M12 2c4 4 6 8 5 12-1 3-3 5-5 6-2-1-4-3-5-6-1-4 1-8 5-12zM12 7v15"/>',
+    'check': '<path d="M20 6 9 17l-5-5"/>',
+    'alerta': '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>',
+    'x': '<path d="M18 6 6 18M6 6l12 12"/>',
+    'info': '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+    'escudo': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    'escudo-ok': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+    'salir': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    'buscar': '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+    'descargar': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    'imprimir': '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/>',
+    'actividad': '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+    'servidor': '<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/>',
+    'reloj': '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    'bus': '<path d="M4 7h11M4 12h16M4 17h11"/><path d="m17 4 3 3-3 3M13 14l3 3-3 3"/>',
+    'candado': '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    'usuario': '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    'capas': '<path d="m12 2 10 5-10 5L2 7zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
+    'historia': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15h6"/>',
+    'ojo': '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>',
+    'pulso': '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+    'mas': '<path d="M12 5v14M5 12h14"/>',
+    'red': '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M7 7.5 10.5 17M17 7.5 13.5 17M7.5 6h9"/>',
+    'medicamento': '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7zM8.5 8.5l7 7"/>',
+    'salida': '<path d="M5 12h14M12 5l7 7-7 7"/>'
+  } -%}
+  <svg class="ico {{ cls }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{{ P[n]|safe }}</svg>
+{%- endmacro %}
+{% macro etq(dominio, v) -%}
+  {%- if v is none or v == '' -%}—
+  {%- elif DOMINIOS.get(dominio) -%}{{ DOMINIOS[dominio]['codigos'].get(v|string, v) }}
+  {%- else -%}{{ v }}{%- endif -%}
+{%- endmacro %}
+{% macro fecha(f) -%}{{ (f|string)[:16]|replace('T', ' ') if f else '—' }}{%- endmacro %}
+{% macro motor(m) -%}
+  {%- if m == 'mongodb' -%}<span class="badge b-mongo">{{ ico('hoja') }}MongoDB</span>
+  {%- elif m == 'postgresql' -%}<span class="badge b-pg">{{ ico('db') }}PostgreSQL</span>
+  {%- else -%}<span class="badge b-neutro">{{ m or 'motor —' }}</span>{%- endif -%}
+{%- endmacro %}
+{% macro iniciales(nombre) -%}
+  {%- set pp = ((nombre or '')|string).split() or ['?'] -%}
+  {{- ((pp[0][:1]) ~ (pp[1][:1] if pp|length > 1 else ''))|upper -}}
+{%- endmacro %}
+{% macro chip_sello(h) -%}
+  {%- if h -%}<span class="sello-chip corto" data-copiar="{{ h }}">{{ ico('candado') }}<code>{{ h }}</code></span>{%- else -%}—{%- endif -%}
+{%- endmacro %}
+{% macro triage(v) -%}
+  {%- if v is not defined or v is none or v == '' -%}—{%- else -%}<span class="triage triage-{{ v }}">{{ etq('clasificacion_triage', v) }}</span>{%- endif -%}
+{%- endmacro %}
+{% macro estado_msg(e) -%}
+  {%- set eu = (e or '')|upper -%}
+  <span class="badge punto {{ 'est-' ~ eu|lower if eu in ('RECIBIDO', 'VALIDADO', 'TRANSFORMADO', 'ENTREGADO', 'RECHAZADO', 'REINTENTANDO', 'DUPLICADO', 'MUERTO') else 'b-neutro' }}">{{ eu or '—' }}</span>
+{%- endmacro %}
+{% macro atencion_detalle(at, h=3) %}
+  {% set id_at = 'at-' ~ ((at.numero_visita or 'sin-numero')|string|replace(' ', '-')) %}
+  <article class="atencion {{ 'mongo' if at.motor_origen == 'mongodb' }}" aria-labelledby="{{ id_at }}">
+    <div class="atencion-cab">
+      <h{{ h }} id="{{ id_at }}"><span class="fecha">{{ ico('reloj') }} {{ fecha(at.fecha_ingreso) }}<span class="sr-only"> · </span></span>Visita <span class="mono">{{ at.numero_visita or '—' }}</span></h{{ h }}>
+      <div class="atencion-insignias">
+        <span class="badge b-sede">Sede {{ at.sede_id or '—' }} · {{ at.sede_origen or '—' }}</span>
+        {% if usuario.rol != 'paciente' %}{{ motor(at.motor_origen) }}{% endif %}
+        {% if at.estado %}<span class="badge b-neutro">Estado: {{ at.estado }}</span>{% endif %}
+      </div>
     </div>
-    <div class="no-print">
-      <button onclick="window.print()" class="btn btn-print">🖨️ Imprimir Reporte</button>
-      <a href="/api/pacientes/{{ buscar_doc or '1001' }}/bundle" class="btn" download>📥 Descargar Bundle FHIR</a>
-      <a href="/auth/logout" class="btn btn-danger" style="margin-left:0.5rem;">Cerrar Sesión</a>
-    </div>
-  </header>
+    <dl class="datos">
+      <div><dt>Entidad de salud</dt><dd>{{ at.entidad_salud or '—' }}</dd></div>
+      <div><dt>Modalidad</dt><dd>{{ etq('modalidad_entrega', at.modalidad_entrega) }}</dd></div>
+      <div><dt>Entorno</dt><dd>{{ etq('entorno_atencion', at.entorno_atencion) }}</dd></div>
+      <div><dt>Vía de ingreso</dt><dd>{{ etq('via_ingreso', at.via_ingreso) }}</dd></div>
+      <div><dt>Causa de la atención</dt><dd>{{ at.causa_atencion or '—' }}</dd></div>
+      <div><dt>Triage</dt><dd>{{ triage(at.clasificacion_triage) }}{% if at.fecha_triage %} · {{ fecha(at.fecha_triage) }}{% endif %}</dd></div>
+      {% if at.clase_atencion %}<div><dt>Clase de atención</dt><dd>{{ at.clase_atencion }}</dd></div>{% endif %}
+      {% if at.comunidad_etnica %}<div><dt>Comunidad étnica</dt><dd>{{ at.comunidad_etnica }}</dd></div>{% endif %}
+      {% if at.codigo_profesional %}<div><dt>Profesional</dt><dd>{{ at.codigo_profesional }}</dd></div>{% endif %}
+    </dl>
 
-  <main>
-    <!-- Selector de Documento -->
-    <section class="card no-print">
-      <form method="GET" action="/reporte" style="display:flex; gap:0.5rem; align-items:flex-end;">
-        <div style="flex-grow:1;">
-          <label for="buscar_doc"><strong>Consultar Reporte de Paciente por Documento:</strong></label>
-          <input type="text" id="buscar_doc" name="buscar_doc" value="{{ buscar_doc or '1001' }}" style="width:100%; padding:0.6rem; border:1px solid #ced4da; border-radius:4px;" required>
+    <h{{ h + 1 }} class="sub-t">Diagnósticos (CIE-10)</h{{ h + 1 }}>
+    {% if at.diagnosticos %}
+    <div class="tabla-scroll"><table>
+      <caption class="sr-only">Diagnósticos de la visita {{ at.numero_visita }}</caption>
+      <thead><tr><th scope="col">Código</th><th scope="col">Descripción</th><th scope="col">Rol</th><th scope="col">Tipo</th><th scope="col">Fecha</th></tr></thead>
+      <tbody>
+      {% for dx in at.diagnosticos %}
+        <tr>
+          <th scope="row" class="mono">{{ dx.cie10_codigo or '—' }}</th>
+          <td>{{ dx.descripcion_cie10 or '—' }}</td>
+          <td>{% if dx.rol %}<span class="badge {{ 'b-info' if dx.rol == 'INGRESO' else ('b-ok' if dx.rol == 'EGRESO' else 'b-neutro') }}">{{ dx.rol }}</span>{% else %}—{% endif %}</td>
+          <td>{{ etq('tipo_diagnostico', dx.tipo_diagnostico) }}</td>
+          <td>{{ fecha(dx.fecha_diagnostico) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="muted">Sin diagnósticos registrados.</p>{% endif %}
+
+    {% set labs = [] %}{% set meds = [] %}
+    {% for t in (at.tecnologias or []) %}
+      {% if t.tipo == 'MEDICAMENTO' or (t.descripcion_medicamento and not t.loinc_codigo) %}{% set _ = meds.append(t) %}{% else %}{% set _ = labs.append(t) %}{% endif %}
+    {% endfor %}
+
+    <h{{ h + 1 }} class="sub-t">Laboratorios (LOINC)</h{{ h + 1 }}>
+    {% if labs %}
+    <div class="tabla-scroll"><table>
+      <caption class="sr-only">Laboratorios de la visita {{ at.numero_visita }}</caption>
+      <thead><tr><th scope="col">Prueba</th><th scope="col">LOINC</th><th scope="col">Resultado</th><th scope="col">Fecha de toma</th></tr></thead>
+      <tbody>
+      {% for t in labs %}
+        <tr>
+          <th scope="row">{{ t.descripcion_loinc or '—' }}</th>
+          <td class="mono">{{ t.loinc_codigo or '—' }}</td>
+          <td><strong>{{ t.valor if t.valor is not none else '—' }}</strong> {{ t.unidad or '' }}</td>
+          <td>{{ fecha(t.fecha_toma) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="muted">Sin laboratorios registrados.</p>{% endif %}
+
+    <h{{ h + 1 }} class="sub-t">Medicamentos</h{{ h + 1 }}>
+    {% if meds %}
+    <div class="tabla-scroll"><table>
+      <caption class="sr-only">Medicamentos de la visita {{ at.numero_visita }}</caption>
+      <thead><tr><th scope="col">Medicamento</th><th scope="col">Dosis</th><th scope="col">Vía</th><th scope="col">Frecuencia</th><th scope="col">Días</th><th scope="col">Unidades</th><th scope="col">Finalidad</th><th scope="col">Profesional</th></tr></thead>
+      <tbody>
+      {% for t in meds %}
+        <tr>
+          <th scope="row">{{ t.descripcion_medicamento or '—' }}</th>
+          <td>{{ t.dosis or '—' }}</td>
+          <td>{{ etq('via_administracion', t.via_administracion) }}</td>
+          <td>{{ t.frecuencia or '—' }}</td>
+          <td>{{ t.dias_tratamiento if t.dias_tratamiento is not none else '—' }}</td>
+          <td>{{ t.unidades_aplicadas if t.unidades_aplicadas is not none else '—' }}</td>
+          <td>{{ etq('finalidad_tecnologia', t.finalidad_tecnologia) }}</td>
+          <td>{{ t.id_personal_salud or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="muted">Sin medicamentos formulados.</p>{% endif %}
+
+    <h{{ h + 1 }} class="sub-t">Egreso</h{{ h + 1 }}>
+    {% set eg = at.egreso or {} %}
+    {% if eg %}
+    <dl class="datos">
+      <div><dt>Fecha de salida</dt><dd>{{ fecha(eg.fecha_salida) }}</dd></div>
+      <div><dt>Condición de salida</dt><dd>{{ etq('condicion_salida', eg.condicion_salida) }}</dd></div>
+      {% if eg.diagnostico_muerte %}<div><dt>Diagnóstico de muerte</dt><dd class="mono">{{ eg.diagnostico_muerte }}</dd></div>{% endif %}
+      <div><dt>Código del prestador</dt><dd>{{ eg.codigo_prestador or '—' }}</dd></div>
+      <div><dt>Incapacidad</dt><dd>{{ etq('tipo_incapacidad', eg.tipo_incapacidad) }}{% if eg.dias_incapacidad %} · {{ eg.dias_incapacidad }} días{% endif %}</dd></div>
+      {% if eg.dias_lic_maternidad %}<div><dt>Licencia de maternidad</dt><dd>{{ eg.dias_lic_maternidad }} días</dd></div>{% endif %}
+      <div><dt>Alergias</dt><dd>{{ eg.alergias or '—' }}</dd></div>
+      <div><dt>Antecedentes familiares</dt><dd>{{ eg.antecedentes_familiares or '—' }}</dd></div>
+      <div><dt>Riesgos ocupacionales</dt><dd>{{ eg.riesgos_ocupacionales or '—' }}</dd></div>
+      <div><dt>Responsable del egreso</dt><dd>{{ eg.responsable_egreso or '—' }}</dd></div>
+      {% if eg.sello_hash %}<div class="ancho"><dt>Código de verificación</dt><dd>{{ chip_sello(eg.sello_hash) }}</dd></div>{% endif %}
+    </dl>
+    {% else %}<p class="muted"><span class="badge b-info punto">Atención abierta</span> Sin egreso registrado.</p>{% endif %}
+  </article>
+{% endmacro %}
+{% macro barra(valor, etiqueta, verde=false) -%}
+  {%- set v = (valor or 0)|float -%}
+  {%- set v = 100 if v > 100 else (0 if v < 0 else v) -%}
+  <div class="barra{{ ' verde' if verde }}{{ ' baja' if v < 50 and not verde }}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ v|round(1) }}" aria-label="{{ etiqueta }}"><span style="width: {{ v|round(1) }}%"></span></div>
+{%- endmacro %}
+
+  {% set rol = usuario.rol %}
+  {% set doc_q = (buscar_doc or '')|urlencode %}
+  {% set es_tablero = (pestana == 'tablero') and tablero %}
+  {% set es_paciente = rol == 'paciente' %}
+  {{ marco.cabecera(usuario, 'tablero' if es_tablero else 'reporte', buscar_doc) }}
+
+  <div class="encabezado">
+    <div class="encabezado-in">
+      <div>
+        <span class="cejilla">{{ ico('actividad' if es_tablero else 'historia') }} {{ 'Operación' if es_tablero else 'Reporte de HC' }}</span>
+        <h1>{{ 'Estado de la plataforma' if es_tablero else 'Reporte de historia clínica' }}</h1>
+        <p>{{ usuario.nombre_completo or usuario.username }}{% if not es_tablero %} · Documento {{ buscar_doc }}{% endif %}</p>
+      </div>
+    </div>
+  </div>
+
+  {% if tablero %}
+  <nav class="pestanas-barra" aria-label="Secciones del reporte">
+    <ul class="pestanas">
+      <li><a href="/reporte?buscar_doc={{ doc_q }}&amp;pestana=reporte"{{ ' aria-current="page"'|safe if not es_tablero }}>{{ ico('historia') }}Reporte de HC</a></li>
+      <li><a href="/reporte?buscar_doc={{ doc_q }}&amp;pestana=tablero"{{ ' aria-current="page"'|safe if es_tablero }}>{{ ico('actividad') }}Estado de la plataforma</a></li>
+    </ul>
+  </nav>
+  {% endif %}
+
+  <main id="contenido" class="contenedor">
+  {% if not es_tablero %}
+    {# ═══════════════════════ PESTAÑA REPORTE ═══════════════════════ #}
+    {% set p = historia.paciente if historia and historia.paciente else none %}
+
+    <div class="solo-impresion cabecera-impresion">
+      <span><strong>Historia Clínica Electrónica</strong> · Red de IPS Sincelejo · Cartagena · Corozal</span>
+      <span>Reporte de HC · Documento {{ buscar_doc }} · {{ fecha(generado_en) }}</span>
+    </div>
+
+    {% if rol != 'paciente' %}
+    <section class="card no-print" aria-labelledby="sec-buscar">
+      <h2 id="sec-buscar">{{ ico('buscar') }}Buscar paciente</h2>
+      <form method="GET" action="/reporte" class="buscador" role="search">
+        <div class="campo">
+          <label for="buscar_doc">Número de documento</label>
+          <input type="text" id="buscar_doc" name="buscar_doc" value="{{ buscar_doc or '' }}" inputmode="numeric" required>
         </div>
-        <button type="submit" class="btn">Actualizar Reporte</button>
+        <input type="hidden" name="pestana" value="reporte">
+        <button type="submit" class="btn">{{ ico('historia') }}Ver reporte</button>
       </form>
     </section>
-
-    <!-- Aviso de Fallo Parcial / Tolerancia a Fallos -->
-    {% if not historia.reporte_completo %}
-    <div class="alerta" role="alert">
-      <strong>⚠️ REPORTE CLÍNICO INCOMPLETO (Tolerancia a Fallos Activa):</strong><br>
-      {{ historia.aviso_incompletitud }}<br>
-      Sedes que respondieron: <strong>{{ historia.sedes_disponibles }}</strong>. Sedes no disponibles: 
-      {% for sn in historia.sedes_no_disponibles %}
-        <span class="badge-down">Sede {{ sn.sede_id }} ({{ sn.nombre }})</span> 
-      {% endfor %}
-    </div>
     {% endif %}
 
-    <!-- Reporte Clínico Agrupado por Sede -->
-    <section class="card">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-        <div>
-          <h2>Reporte Clínico Federado del Paciente: {{ historia.paciente.nombre_completo if historia.paciente else buscar_doc }}</h2>
-          <p>Documento de Identidad: <strong>{{ buscar_doc }}</strong> · Sello de Integridad del Reporte: <code>{{ sello_reporte }}</code></p>
-        </div>
-        <div>
-          {% if historia.reporte_completo %}
-            <span class="badge-up" style="font-size:0.9rem;">EXPEDIENTE COMPLETO (3/3 Sedes)</span>
+    {% if historia and not historia.reporte_completo %}
+    <section class="alerta-grande" role="alert" aria-labelledby="aviso-incompleto">
+      <span class="icono">{{ ico('alerta', 'ico-lg') }}</span>
+      <div>
+        <h2 id="aviso-incompleto">Reporte INCOMPLETO</h2>
+        <p>{{ historia.aviso_incompletitud or 'No todas las sedes respondieron.' }}</p>
+        <p><strong>Sedes sin conexión:</strong></p>
+        <ul>
+          {% for sn in (historia.sedes_no_disponibles or []) %}
+          <li>Sede {{ sn.sede_id }} · {{ sn.nombre or '—' }}{% if not es_paciente %} ({{ 'MongoDB' if sn.motor == 'mongodb' else 'PostgreSQL' if sn.motor == 'postgresql' else (sn.motor or 'motor desconocido') }}){% if sn.motivo %} — {{ sn.motivo }}{% endif %}{% endif %}</li>
           {% else %}
-            <span class="badge-down" style="font-size:0.9rem;">EXPEDIENTE PARCIAL</span>
-          {% endif %}
-        </div>
+          <li>Sin detalle de las sedes.</li>
+          {% endfor %}
+        </ul>
+        <p>Pueden faltar atenciones registradas en esas sedes.</p>
       </div>
+    </section>
+    {% endif %}
 
-      <!-- Atenciones agrupadas por sede -->
-      {% for at in historia.atenciones %}
-      <div style="margin-bottom:1.25rem; border:1px solid #dee2e6; border-radius:4px; padding:1rem; background:#fff;">
-        <div style="display:flex; justify-content:space-between; background:#e9ecef; padding:0.5rem 0.75rem; border-radius:4px; margin:-1rem -1rem 0.75rem -1rem;">
-          <span><strong>{{ at.sede_origen }}</strong> · Visita: <code>{{ at.numero_visita }}</code></span>
-          <span>Fecha Ingreso: <strong>{{ at.fecha_ingreso }}</strong></span>
+    <section class="card" aria-labelledby="sec-ident">
+      <div class="paciente-cab">
+        <span class="avatar" aria-hidden="true">{{ iniciales(p.nombre_completo if p else none) }}</span>
+        <div class="nombre">
+          <h2 id="sec-ident">Paciente: {{ p.nombre_completo if p and p.nombre_completo else 'sin datos' }} · Documento {{ buscar_doc }}</h2>
+          <div class="meta">
+            {% if historia and historia.reporte_completo %}
+            <span class="badge badge-lg b-ok">{{ ico('check') }}Reporte completo · {{ (historia.sedes_disponibles or [])|length }} sedes</span>
+            {% else %}
+            <span class="badge badge-lg b-err">{{ ico('alerta') }}Reporte incompleto · {{ (historia.sedes_disponibles or [])|length if historia else 0 }} de {{ SEDES|length }} sedes</span>
+            {% endif %}
+          </div>
         </div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
-          <div>
-            <strong>Diagnósticos Registrados (CIE-10):</strong>
-            <ul>
-              {% for dx in at.diagnosticos %}
-                <li><code>{{ dx.cie10_codigo }}</code>: {{ dx.descripcion_cie10 }} ({{ dx.tipo }})</li>
-              {% else %}
-                <li style="color:#777;">Sin diagnósticos</li>
-              {% endfor %}
-            </ul>
-          </div>
-          <div>
-            <strong>Resultados de Laboratorio / Observaciones (LOINC):</strong>
-            <ul>
-              {% for t in at.tecnologias %}
-                <li>{{ t.descripcion_loinc }} [{{ t.loinc_codigo }}]: <strong>{{ t.valor }} {{ t.unidad }}</strong></li>
-              {% else %}
-                <li style="color:#777;">Sin tecnologías/laboratorios</li>
-              {% endfor %}
-            </ul>
-          </div>
+        <div class="acciones no-print">
+          <button type="button" class="btn btn-sec" onclick="window.print()">{{ ico('imprimir') }}Imprimir</button>
+          {% if p %}<a class="btn" href="/api/pacientes/{{ buscar_doc }}/bundle" download="bundle-pac-{{ buscar_doc }}.json">{{ ico('descargar') }}Descargar (FHIR)</a>{% endif %}
         </div>
       </div>
+      {% if p %}
+      <dl class="datos" style="margin-top:20px;">
+        <div><dt>Documento</dt><dd>{{ etq('tipo_documento', p.tipo_documento) }} {{ p.documento_id or buscar_doc }}</dd></div>
+        <div><dt>Fecha de nacimiento</dt><dd>{{ p.fecha_nacimiento or '—' }}</dd></div>
+        <div><dt>Edad</dt><dd>{{ p.edad if p.edad is not none else '—' }} {{ etq('unidad_edad', p.unidad_edad) if p.unidad_edad else '' }}</dd></div>
+        <div><dt>Sexo</dt><dd>{{ etq('sexo', p.sexo) }}</dd></div>
+        <div><dt>Municipio DANE</dt><dd>{{ p.municipio_residencia or '—' }}</dd></div>
+        <div><dt>Teléfono</dt><dd>{{ p.telefono or '—' }}</dd></div>
+        <div><dt>Sedes con registros</dt><dd class="atencion-insignias" style="margin-top:4px;">{% for s in (historia.sedes_con_registros or []) %}<span class="badge b-sede">Sede {{ s }}</span> {% else %}—{% endfor %}</dd></div>
+        <div><dt>Atenciones encontradas</dt><dd>{{ historia.total_atenciones_encontradas or (historia.atenciones or [])|length }}</dd></div>
+      </dl>
+      {% if historia.inconsistencias_entre_sedes %}
+      <div class="alerta" role="note" style="margin:16px 0 0;">
+        {{ ico('alerta') }}
+        <strong>Datos distintos entre sedes:</strong>
+        <ul>
+          {% for inc in historia.inconsistencias_entre_sedes %}
+          <li>{{ inc.campo }}: {% for s, v in (inc.valores_por_sede or {}).items() %}Sede {{ s }} = «{{ v if v is not none else '—' }}»{{ '; ' if not loop.last }}{% endfor %}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
       {% else %}
-      <p style="text-align:center; color:#777;">No se hallaron registros clínicos para este paciente.</p>
+      <p class="muted" style="margin:16px 0 0;">Sin datos registrados para el documento {{ buscar_doc }}.</p>
+      {% endif %}
+    </section>
+
+    <section class="card" aria-labelledby="sec-sedes">
+      <h2 id="sec-sedes">{{ ico('red') }}Historia por sede</h2>
+      {% for sd in (por_sede or []) %}
+      <section class="sede-bloque {{ 'caida' if not sd.disponible }}" aria-labelledby="sede-{{ sd.sede_id }}">
+        <div class="sede-cab">
+          <h3 id="sede-{{ sd.sede_id }}" style="margin:0;">Sede {{ sd.sede_id }} · {{ sd.nombre or '—' }}</h3>
+          <div>
+            {% if not es_paciente %}{{ motor(sd.motor) }}{% endif %}
+            {% if sd.disponible %}<span class="badge punto b-ok">Disponible</span>{% else %}<span class="badge punto b-err">Sin conexión</span>{% endif %}
+            {% if sd.disponible %}<span class="badge b-neutro">{{ (sd.atenciones or [])|length }} atenciones</span>{% endif %}
+          </div>
+        </div>
+        {% if not sd.disponible %}
+          <p style="margin:0;"><strong>Sede sin conexión.</strong> Sus atenciones no aparecen en este reporte.</p>
+        {% elif sd.atenciones %}
+          <ol class="timeline" aria-label="Atenciones de la sede {{ sd.sede_id }}">
+          {% for at in sd.atenciones %}<li class="{{ 'mongo' if at.motor_origen == 'mongodb' }}">{{ atencion_detalle(at, 4) }}</li>{% endfor %}
+          </ol>
+        {% else %}
+          <p class="muted" style="margin:0;">Sin atenciones del paciente en esta sede.</p>
+        {% endif %}
+      </section>
       {% endfor %}
     </section>
 
-    <!-- TABLERO DE ESTADO DE LA PLATAFORMA (Observabilidad) -->
-    <section class="card no-print" style="border-top: 4px solid var(--primary);">
-      <h2>Tablero de Estado y Observabilidad en Tiempo Real</h2>
-
-      <div class="grid-tablero">
-        <!-- Estado de Nodos -->
-        <div class="metric-box">
-          <h3>Nodos de Base de Datos</h3>
-          <div class="metric-value">{{ tablero.nodos.activos }} / {{ tablero.nodos.total }}</div>
-          <small>Disponibilidad por sede:</small>
-          <ul style="margin:0.5rem 0 0 0; padding-left:1.2rem;">
-            {% for s_key, s_data in tablero.nodos.detalles.items() %}
-            <li>
-              {{ s_data.nombre }}: 
-              {% if s_data.disponible %}
-                <span class="badge-up">ONLINE</span>
-              {% else %}
-                <span class="badge-down">CAÍDO</span>
-              {% endif %}
-            </li>
-            {% endfor %}
-          </ul>
+    <section class="card" aria-labelledby="sec-cobertura">
+      <h2 id="sec-cobertura">{{ ico('capas') }}Completitud del registro (Resolución 866 de 2021)</h2>
+      {% if cobertura %}
+      <div class="kpis">
+        <div class="kpi">
+          <div class="kpi-cab"><h3>Campos diligenciados</h3><span class="kpi-ico">{{ ico('capas') }}</span></div>
+          <div class="kpi-valor">{{ cobertura.campos_cubiertos or 0 }} <small>/ {{ cobertura.total_campos or 57 }}</small></div>
+          <div class="barra-fila">{{ barra(cobertura.porcentaje, 'Cobertura de campos') }}<span class="pct">{{ cobertura.porcentaje or 0 }} %</span></div>
         </div>
-
-        <!-- Cobertura FHIR por Sede -->
-        <div class="metric-box">
-          <h3>Cobertura FHIR por Sede</h3>
-          <ul style="margin:0.5rem 0 0 0; padding-left:1.2rem; font-size:0.95rem;">
-            {% for s_key, s_data in tablero.nodos.detalles.items() %}
-            <li style="margin-bottom:0.4rem;">
-              {{ s_data.nombre }}: <strong>{{ s_data.porcentaje_cobertura }}%</strong><br>
-              <small style="color:#666;">({{ s_data.pacientes_con_fhir }} de {{ s_data.total_pacientes }} con fhir_patient_id)</small>
-            </li>
-            {% endfor %}
-          </ul>
+        <div class="kpi ok">
+          <div class="kpi-cab"><h3>Obligatorios diligenciados</h3><span class="kpi-ico">{{ ico('check') }}</span></div>
+          <div class="kpi-valor">{{ cobertura.obligatorios_cubiertos or 0 }} <small>/ {{ cobertura.obligatorios_total or 0 }}</small></div>
+          <div class="barra-fila">{{ barra(cobertura.porcentaje_obligatorios, 'Cobertura de campos obligatorios', true) }}<span class="pct">{{ cobertura.porcentaje_obligatorios or 0 }} %</span></div>
         </div>
+      </div>
+      <h3 style="margin-top:24px;">Campos faltantes ({{ (cobertura.faltantes or [])|length }}, de ellos {{ (cobertura.faltantes_obligatorios or [])|length }} obligatorios)</h3>
+      {% if cobertura.faltantes %}
+      <ul class="lista-faltantes">
+        {% for f in cobertura.faltantes %}
+        <li><span class="n">{{ f.num }}</span><span>{{ f.nombre }} <small class="muted">({{ f.grupo }})</small></span>{% if f.obligatorio %} <span class="badge b-err">Obligatorio</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="alerta-ok">{{ ico('check') }}No falta ningún campo.</p>
+      {% endif %}
+      {% else %}
+      <p class="muted">Sin datos de completitud.</p>
+      {% endif %}
+    </section>
 
-        <!-- Métricas del HSB -->
-        <div class="metric-box">
-          <h3>Métricas del HSB (Bus)</h3>
-          <div style="font-size:0.9rem;">
-            Entregados: <strong>{{ tablero.bus.total_entregados }}</strong><br>
-            Rechazados: <strong>{{ tablero.bus.total_rechazados }}</strong><br>
-            Duplicados Detectados: <strong>{{ tablero.bus.total_duplicados_detectados }}</strong><br>
-            Mensajes Muertos: <strong>{{ tablero.bus.total_mensajes_muertos }}</strong><br>
-            Latencia Media: <strong>{{ tablero.bus.latencia_media_ms }} ms</strong><br>
-            Tasa de Fallos: <strong>{{ tablero.bus.porcentaje_fallidos }}%</strong>
-          </div>
-        </div>
-
-        <!-- Verificador Criptográfico de Auditoría -->
-        <div class="metric-box" style="border: 2px solid {% if tablero.auditoria.cadena_integra %}#28a745{% else %}#dc3545{% endif %};">
-          <h3>Cadena de Auditoría (SHA-256)</h3>
-          <div style="font-weight:bold; color:{% if tablero.auditoria.cadena_integra %}#155724{% else %}#721c24{% endif %};">
-            {{ tablero.auditoria.estado_verificador }}
-          </div>
-          <p style="font-size:0.85rem; margin:0.5rem 0;">
-            Total Eventos Encadenados: <strong>{{ tablero.auditoria.total_eventos_registrados }}</strong>
-          </p>
-
-          {% if not tablero.auditoria.cadena_integra %}
-          <div style="background:#f8d7da; color:#721c24; padding:0.5rem; border-radius:4px; font-size:0.8rem;">
-            <strong>Primer evento adulterado:</strong><br>
-            ID: {{ tablero.auditoria.detalle_alteracion.evento_id }}<br>
-            Motivo: {{ tablero.auditoria.detalle_alteracion.motivo }}
-          </div>
+    <section class="card" aria-labelledby="sec-57">
+      <h2 id="sec-57">{{ ico('historia') }}Datos del registro clínico <small class="muted">· atención más reciente</small></h2>
+      {% if tabla57 %}
+      <div class="tabla-scroll alta">
+      <table>
+        <caption class="sr-only">Datos del registro clínico agrupados según la Resolución 866 de 2021</caption>
+        <thead>
+          <tr><th scope="col" class="num-col">N.º</th><th scope="col">Campo</th><th scope="col">Valor</th><th scope="col">Obligatorio</th><th scope="col">Estado</th></tr>
+        </thead>
+        {% set ns = namespace(grupo=none) %}
+        {% for f in tabla57 %}
+          {% if f.grupo != ns.grupo %}
+            {% if ns.grupo is not none %}</tbody>{% endif %}
+            {% set ns.grupo = f.grupo %}
+        <tbody>
+          <tr class="fila-grupo"><th scope="rowgroup" colspan="5" class="grupo">{{ f.grupo or 'Sin grupo' }}</th></tr>
           {% endif %}
+          <tr>
+            <td class="num-col">{{ f.num }}</td>
+            <th scope="row">{{ f.nombre }}</th>
+            <td>{% if f.lleno %}{% if f.valor is sameas true %}Sí{% elif f.valor is sameas false %}No{% else %}{{ f.valor }}{% endif %}{% if f.etiqueta and f.etiqueta|string != f.valor|string %} · {{ f.etiqueta }}{% endif %}{% else %}—{% endif %}</td>
+            <td>{{ 'Sí' if f.obligatorio else 'No' }}</td>
+            <td>{% if f.lleno %}<span class="badge b-ok"><span aria-hidden="true">✓</span> Diligenciado</span>{% else %}<span class="badge {{ 'b-err' if f.obligatorio else 'b-neutro' }}"><span aria-hidden="true">—</span> Vacío</span>{% endif %}</td>
+          </tr>
+          {% if loop.last %}</tbody>{% endif %}
+        {% endfor %}
+      </table>
+      </div>
+      {% else %}
+      <p class="muted">Sin datos registrados.</p>
+      {% endif %}
+    </section>
 
-          <div style="margin-top:0.75rem;">
-            <form method="POST" action="/api/auditoria/alterar-prueba" style="display:inline;">
-              <button type="submit" class="btn btn-danger" style="font-size:0.75rem; padding:0.3rem 0.6rem;">
-                ⚠️ Demostrar Alteración en Vivo
-              </button>
-            </form>
-          </div>
+    <section class="card sello" aria-labelledby="sec-sello">
+      <h2 id="sec-sello">{{ ico('escudo-ok') }}Código de verificación del reporte</h2>
+      <p style="margin:0 0 12px;">{{ chip_sello(sello_reporte) }}</p>
+      <p style="margin:0;" class="muted">Generado: <strong>{{ fecha(generado_en) }}</strong> · Consultado por {{ usuario.nombre_completo or usuario.username }} ({{ marco.rol_texto(usuario) }})
+        {% if historia and not historia.reporte_completo %} · <span class="badge b-err">Reporte incompleto</span>{% endif %}</p>
+    </section>
+
+  {% else %}
+    {# ═══════════════════════ PESTAÑA TABLERO ═══════════════════════ #}
+    {% set nodos = tablero.nodos or {} %}
+    {% set bus = tablero.bus or {} %}
+    {% set aud = tablero.auditoria or {} %}
+    {% set fallidos = (bus.porcentaje_fallidos or 0)|float %}
+
+    <section aria-labelledby="sec-resumen">
+      <h2 id="sec-resumen" class="sr-only">Resumen</h2>
+      <div class="kpis">
+        <div class="kpi {{ 'ok' if nodos.activos == nodos.total else 'down' }}">
+          <div class="kpi-cab"><h3>Sedes activas</h3><span class="kpi-ico">{{ ico('servidor') }}</span></div>
+          <div class="kpi-valor">{{ nodos.activos or 0 }} <small>/ {{ nodos.total or 0 }}</small></div>
+          <span class="pie">Nodos de base de datos</span>
+        </div>
+        <div class="kpi {{ 'ok' if tablero.hapi_fhir == 'UP' else 'down' }}">
+          <div class="kpi-cab"><h3>Servidor HAPI FHIR</h3><span class="kpi-ico">{{ ico('capas') }}</span></div>
+          <div class="kpi-valor">{% if tablero.hapi_fhir == 'UP' %}<span class="badge badge-lg punto b-ok">UP</span>{% else %}<span class="badge badge-lg punto b-err">DOWN</span>{% endif %}</div>
+          <span class="pie">FHIR R4</span>
+        </div>
+        <div class="kpi">
+          <div class="kpi-cab"><h3>Cobertura FHIR global</h3><span class="kpi-ico">{{ ico('check') }}</span></div>
+          <div class="kpi-valor">{{ tablero.cobertura_fhir_global or 0 }} <small>%</small></div>
+          {{ barra(tablero.cobertura_fhir_global, 'Cobertura FHIR global') }}
+          <span class="pie">Pacientes publicados en FHIR</span>
+        </div>
+        <div class="kpi">
+          <div class="kpi-cab"><h3>Mensajes recibidos</h3><span class="kpi-ico">{{ ico('bus') }}</span></div>
+          <div class="kpi-valor">{{ bus.total_recibidos or 0 }}</div>
+          <span class="pie">{{ bus.mensajes_ultimo_minuto or 0 }} en el último minuto</span>
+        </div>
+        <div class="kpi">
+          <div class="kpi-cab"><h3>Latencia media</h3><span class="kpi-ico">{{ ico('reloj') }}</span></div>
+          <div class="kpi-valor">{{ bus.latencia_media_ms or 0 }} <small>ms</small></div>
+          <span class="pie">Bus de integración</span>
+        </div>
+        <div class="kpi {{ 'down' if fallidos >= 20 else ('warn' if fallidos > 0 else 'ok') }}">
+          <div class="kpi-cab"><h3>Mensajes fallidos</h3><span class="kpi-ico">{{ ico('alerta') }}</span></div>
+          <div class="kpi-valor">{{ bus.porcentaje_fallidos or 0 }} <small>%</small></div>
+          <span class="pie">Bus de integración: {{ bus.estado_general or '—' }}</span>
         </div>
       </div>
     </section>
+
+    <section class="card" aria-labelledby="sec-nodos">
+      <h2 id="sec-nodos">{{ ico('servidor') }}Sedes (nodos de base de datos)</h2>
+      <div class="grid-tablero">
+        {% for clave, n in (nodos.detalles or {})|dictsort %}
+        <div class="metric-box {{ 'ok' if n.disponible else 'down' }}">
+          <h3>Sede {{ n.sede_id or clave }} · {{ n.nombre or '—' }}</h3>
+          <p class="nodo-cab">{{ motor(n.motor) }}
+            {% if n.disponible %}<span class="badge punto b-ok">UP</span>{% else %}<span class="badge punto b-err">DOWN</span>{% endif %}</p>
+          <dl class="datos" style="grid-template-columns: 1fr 1fr;">
+            <div><dt>Pacientes</dt><dd>{{ n.total_pacientes if n.total_pacientes is not none else '—' }}</dd></div>
+            <div><dt>Con FHIR</dt><dd>{{ n.pacientes_con_fhir if n.pacientes_con_fhir is not none else '—' }}</dd></div>
+            <div><dt>Latencia</dt><dd>{{ n.latencia_ms ~ ' ms' if n.latencia_ms is not none else '—' }}</dd></div>
+            <div><dt>Cobertura FHIR</dt><dd>{{ n.porcentaje_cobertura or 0 }} %</dd></div>
+          </dl>
+          {{ barra(n.porcentaje_cobertura, 'Cobertura FHIR de la sede ' ~ (n.sede_id or clave)) }}
+          {% if n.error %}<p class="nodo-error mono">{{ n.error }}</p>{% endif %}
+        </div>
+        {% else %}
+        <p class="muted">Sin información de las sedes.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="sec-bus">
+      <h2 id="sec-bus">{{ ico('bus') }}Bus de integración</h2>
+      <div class="grid-tablero">
+        <div class="metric-box">
+          <h3>Mensajes</h3>
+          <div class="tabla-scroll">
+          <table>
+            <caption class="sr-only">Contadores del bus</caption>
+            <tbody>
+              <tr><th scope="row">Recibidos</th><td class="num-col">{{ bus.total_recibidos or 0 }}</td></tr>
+              <tr><th scope="row">Entregados</th><td class="num-col">{{ bus.total_entregados or 0 }}</td></tr>
+              <tr><th scope="row">Rechazados</th><td class="num-col">{{ bus.total_rechazados or 0 }}</td></tr>
+              <tr><th scope="row">Duplicados detectados</th><td class="num-col">{{ bus.total_duplicados_detectados or 0 }}</td></tr>
+              <tr><th scope="row">Reintentos ejecutados</th><td class="num-col">{{ bus.total_reintentos_ejecutados or 0 }}</td></tr>
+              <tr><th scope="row">Mensajes muertos</th><td class="num-col">{{ bus.total_mensajes_muertos or 0 }}</td></tr>
+              {% set pend = bus.pendientes_en_cola_reintentos %}
+              <tr><th scope="row">Pendientes de reintento</th><td class="num-col">{{ (pend|length if pend is sequence and pend is not string else pend) if pend is not none and pend is defined else 0 }}</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+        <div class="metric-box">
+          <h3>Rendimiento</h3>
+          <dl class="datos" style="grid-template-columns: 1fr;">
+            <div><dt>Mensajes en el último minuto</dt><dd class="metric-value" style="font-size:1.4rem;">{{ bus.mensajes_ultimo_minuto or 0 }}</dd></div>
+            <div><dt>Latencia media</dt><dd class="metric-value" style="font-size:1.4rem;">{{ bus.latencia_media_ms or 0 }} ms</dd></div>
+            <div><dt>Mensajes fallidos</dt><dd class="metric-value" style="font-size:1.4rem;">{{ bus.porcentaje_fallidos or 0 }} %</dd></div>
+            <div><dt>Estado general del bus</dt><dd><span class="badge {{ 'b-ok' if (bus.estado_general or '')|upper in ('UP', 'OK', 'SALUDABLE') else 'b-warn' if bus.estado_general else 'b-neutro' }}">{{ bus.estado_general or '—' }}</span></dd></div>
+          </dl>
+        </div>
+        <div class="metric-box">
+          <h3>Mensajes por estado</h3>
+          {% set por_estado = bus.mensajes_por_estado_persistidos or {} %}
+          {% if por_estado %}
+          <div class="tabla-scroll">
+          <table>
+            <caption class="sr-only">Mensajes persistidos por estado</caption>
+            <thead><tr><th scope="col">Estado</th><th scope="col" class="num-col">Cantidad</th></tr></thead>
+            <tbody>
+              {% for e, n in por_estado|dictsort %}
+              <tr>
+                <th scope="row">{{ estado_msg(e) }}</th>
+                <td class="num-col">{{ n }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+          {% else %}
+          <p class="muted">Sin mensajes.</p>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="sec-auditoria">
+      <h2 id="sec-auditoria">{{ ico('escudo') }}Cadena de auditoría</h2>
+      {% set integra = aud.cadena_integra %}
+      <div class="verif {{ 'ok' if integra is sameas true else ('err' if integra is sameas false else 'na') }}" role="status">
+        <span class="icono">{{ ico('escudo-ok' if integra is sameas true else ('alerta' if integra is sameas false else 'info')) }}</span>
+        <div class="verif-cuerpo">
+          <div class="rotulo">Estado de la cadena</div>
+          <div class="estado">{% if integra is sameas true %}ÍNTEGRA{% elif integra is sameas false %}ALERTA: cadena alterada{% else %}NO DISPONIBLE{% endif %}</div>
+          <p style="margin:4px 0 0;">{{ aud.estado_verificador or '' }}</p>
+          {% if integra is sameas false and aud.detalle_alteracion %}
+          {% set d = aud.detalle_alteracion %}
+          <h3 style="margin-top:12px;">Primer evento alterado</h3>
+          <dl class="datos">
+            <div><dt>Índice</dt><dd><strong>{{ d.indice if d.indice is not none else '—' }}</strong></dd></div>
+            <div><dt>Motivo</dt><dd>{{ d.motivo or '—' }}</dd></div>
+            <div><dt>Usuario (registrado)</dt><dd>{{ d.usuario or '—' }}</dd></div>
+            <div><dt>Tipo de evento</dt><dd>{{ d.tipo_evento or '—' }}</dd></div>
+            {% if d.timestamp %}<div><dt>Fecha del evento</dt><dd>{{ fecha(d.timestamp) }}</dd></div>{% endif %}
+          </dl>
+          {% endif %}
+        </div>
+      </div>
+      <dl class="datos">
+        <div><dt>Eventos registrados</dt><dd>{{ aud.total_eventos_registrados or 0 }}</dd></div>
+        <div><dt>Eventos en espera</dt><dd>{{ aud.eventos_en_espera or 0 }}</dd></div>
+        <div><dt>Base central</dt><dd>{% if aud.disponible %}<span class="badge punto b-ok">UP</span>{% else %}<span class="badge punto b-err">DOWN</span>{% endif %}</dd></div>
+        <div class="ancho"><dt>Último hash de la cadena</dt><dd>{{ chip_sello(aud.ultimo_hash) }}</dd></div>
+      </dl>
+
+      {% if rol in ('auditor', 'administrador') %}
+      <div class="metric-box no-print prueba-integridad" id="prueba-integridad">
+        <h3>{{ ico('alerta') }} Prueba de integridad</h3>
+        <form method="POST" action="/api/auditoria/alterar-prueba" class="buscador">
+          <div class="campo" style="flex:0 1 14rem;">
+            <label for="indice">Índice del evento</label>
+            <input type="number" id="indice" name="indice" value="1" min="1" step="1" required>
+          </div>
+          <button type="submit" class="btn btn-danger">{{ ico('alerta') }}Alterar evento</button>
+        </form>
+        <details class="detalle-sql">
+          <summary>Alteración manual (SQL)</summary>
+          <pre class="cmd">docker exec -it pg_central psql -U clinica_user -d clinica_central -c "UPDATE evento_auditoria SET usuario_sistema='intruso' WHERE indice=3"</pre>
+        </details>
+      </div>
+      {% endif %}
+    </section>
+
+    <p class="muted">Actualizado: {{ fecha(generado_en) }}</p>
+  {% endif %}
   </main>
+  {{ marco.pie() }}
 </body>
 </html>
-

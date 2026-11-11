@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Administración · Historia Clínica Electrónica</title>
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
+  <link rel="stylesheet" href="/static/plataforma.css">
+  <script src="/static/plataforma.js" defer></script>
+  <script src="/static/panel.js" defer></script>
+</head>
+{% import '_marco.html' as marco %}
+{% set U = usuario or {} %}
+{% set rol = U.rol or '' %}
+<body data-rol="{{ rol }}" class="pagina-panel">
+{# ── Ayudas de presentación ───────────── #}
+{% macro ico(n, cls='') -%}
+  {%- set P = {
+    'db': '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+    'hoja': '<path d="M12 2c4 4 6 8 5 12-1 3-3 5-5 6-2-1-4-3-5-6-1-4 1-8 5-12zM12 7v15"/>',
+    'check': '<path d="M20 6 9 17l-5-5"/>',
+    'alerta': '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>',
+    'x': '<path d="M18 6 6 18M6 6l12 12"/>',
+    'info': '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+    'escudo': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    'escudo-ok': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+    'buscar': '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+    'actividad': '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+    'servidor': '<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/>',
+    'reloj': '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    'bus': '<path d="M4 7h11M4 12h16M4 17h11"/><path d="m17 4 3 3-3 3M13 14l3 3-3 3"/>',
+    'candado': '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    'usuario': '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    'usuarios': '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+    'capas': '<path d="m12 2 10 5-10 5L2 7zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
+    'mas': '<path d="M12 5v14M5 12h14"/>',
+    'pausa': '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+    'refrescar': '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8M21 3v5h-5"/>',
+    'dados': '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 8h.01M16 8h.01M12 12h.01M8 16h.01M16 16h.01"/>',
+    'enviar': '<path d="m22 2-7 20-4-9-9-4zM22 2 11 13"/>',
+    'barras': '<path d="M3 3v18h18M7 16v-4M11 16V8M15 16v-6M19 16V5"/>',
+    'tablero': '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+    'salida': '<path d="M5 12h14M12 5l7 7-7 7"/>'
+  } -%}
+  <svg class="ico {{ cls }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{{ P[n]|safe }}</svg>
+{%- endmacro %}
+{% macro fecha(f) -%}{{ (f|string)[:16]|replace('T', ' ') if f else '—' }}{%- endmacro %}
+{% macro n(v) -%}
+  {%- if v is number and v is not boolean -%}
+    {%- if (v|int) == v -%}{{ '{:,}'.format(v|int)|replace(',', '.') }}
+    {%- else -%}{{ '{:,.1f}'.format(v)|replace(',', ' ')|replace('.', ',')|replace(' ', '.') }}{%- endif -%}
+  {%- else -%}—{%- endif -%}
+{%- endmacro %}
+{% macro valor(v) -%}{{ v if v is number and v is not boolean else '' }}{%- endmacro %}
+{% macro motor(m) -%}
+  {%- if m == 'mongodb' -%}<span class="badge b-mongo">{{ ico('hoja') }}MongoDB</span>
+  {%- elif m == 'postgresql' -%}<span class="badge b-pg">{{ ico('db') }}PostgreSQL</span>
+  {%- else -%}<span class="badge b-neutro">{{ m or 'motor —' }}</span>{%- endif -%}
+{%- endmacro %}
+{% macro chip_sello(h) -%}
+  {%- if h -%}<span class="sello-chip corto" data-copiar="{{ h }}">{{ ico('candado') }}<code>{{ h }}</code></span>{%- else -%}—{%- endif -%}
+{%- endmacro %}
+{% macro hash_corto(h) -%}
+  {%- if h -%}<code class="hash-corto" title="{{ h }}">{{ (h|string)[:10] }}…</code>{%- else -%}—{%- endif -%}
+{%- endmacro %}
+{% macro estado_msg(e) -%}
+  {%- set eu = (e or '')|string|upper -%}
+  <span class="badge punto {{ 'est-' ~ eu|lower if eu in ('RECIBIDO', 'VALIDADO', 'TRANSFORMADO', 'ENTREGADO', 'RECHAZADO', 'REINTENTANDO', 'DUPLICADO', 'MUERTO') else 'b-neutro' }}">{{ eu or '—' }}</span>
+{%- endmacro %}
+{% macro resultado_aud(r) -%}
+  {%- set ru = (r or '')|string|upper -%}
+  <span class="badge {{ 'b-ok' if ru in ('EXITOSO', 'OK', 'EXITO', 'ÉXITO', 'PERMITIDO') else ('b-err' if ru in ('FALLIDO', 'DENEGADO', 'ERROR', 'RECHAZADO') else 'b-neutro') }}">{{ ru or '—' }}</span>
+{%- endmacro %}
+{% macro barra(valor, etiqueta, id='') -%}
+  {%- set v = (valor if valor is number else 0)|float -%}
+  {%- set v = 100 if v > 100 else (0 if v < 0 else v) -%}
+  <div class="barra{{ ' baja' if v < 50 }}"{% if id %} id="{{ id }}"{% endif %} role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ v|round(1) }}" aria-label="{{ etiqueta }}"><span style="width: {{ v|round(1) }}%"></span></div>
+{%- endmacro %}
+{% macro sede_txt(s) -%}
+  {%- if s is number and SEDES and SEDES.get(s) -%}Sede {{ s }} · {{ SEDES[s].ciudad or SEDES[s].nombre }}
+  {%- elif s is number -%}Sede {{ s }}
+  {%- else -%}{{ s or '—' }}{%- endif -%}
+{%- endmacro %}
+{% set ROLES_TXT = {'paciente': 'Paciente', 'admisionista': 'Admisionista', 'medico': 'Médico', 'auditor': 'Auditor', 'administrador': 'Administrador'} %}
+{% set ROLES_CLS = {'paciente': 'b-info', 'admisionista': 'b-ok', 'medico': 'b-vio', 'auditor': 'b-ind', 'administrador': 'b-warn'} %}
+{% set ORIGEN_TXT = {'SEMILLA': 'Carga inicial', 'PANEL': 'Panel', 'ADMISION': 'Admisión'} %}
+
+  {{ marco.cabecera(U, 'panel') }}
+
+  {% set R = resumen or {} %}
+  {% set K = R.kpis or {} %}
+  <div class="encabezado">
+    <div class="encabezado-in">
+      <div>
+        <span class="cejilla">{{ ico('actividad') }} Administración</span>
+        <h1>Panel de administración</h1>
+        <p>{{ U.nombre_completo or U.username or 'Usuario' }} · {{ marco.rol_texto(U) }}{% if U.sede_id in SEDES %} · {{ SEDES[U.sede_id].nombre }}{% endif %}</p>
+      </div>
+      <div class="panel-control">
+        <div class="vivo" id="vivo" hidden>
+          <span class="vivo-punto" aria-hidden="true"></span>
+          <span id="vivo-texto">En vivo</span>
+        </div>
+        <p class="vivo-estatico" id="vivo-estatico">{{ ico('reloj') }} Actualizado: <time id="generado-en" datetime="{{ R.generado_en or '' }}">{{ fecha(R.generado_en) }}</time></p>
+        <div class="acciones">
+          <button type="button" class="btn btn-sec btn-sm" id="btn-pausa" aria-pressed="false" hidden>{{ ico('pausa') }}<span>Pausar</span></button>
+          <a class="btn btn-sm" id="btn-actualizar" href="/panel">{{ ico('refrescar') }}Actualizar</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="consola">
+    <nav class="consola-nav" aria-label="Secciones del panel">
+      <ul>
+        <li><a href="#resumen" data-seccion="resumen">{{ ico('tablero') }}<span>Resumen</span></a></li>
+        <li><a href="#pacientes" data-seccion="pacientes">{{ ico('usuario') }}<span>Pacientes</span></a></li>
+        <li><a href="#usuarios" data-seccion="usuarios">{{ ico('usuarios') }}<span>Usuarios</span></a></li>
+        <li><a href="#integracion" data-seccion="integracion">{{ ico('bus') }}<span>Integración</span></a></li>
+        <li><a href="#fhir" data-seccion="fhir">{{ ico('capas') }}<span>FHIR</span></a></li>
+        <li><a href="#auditoria" data-seccion="auditoria">{{ ico('escudo') }}<span>Auditoría</span></a></li>
+      </ul>
+    </nav>
+
+  <main id="contenido" class="consola-main">
+    <div id="anuncio" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="avisos" class="avisos-panel">
+      <p class="alerta-err" id="aviso-sesion" role="alert" hidden>{{ ico('candado') }}<strong>Sesión expirada.</strong> <a href="/login">Iniciar sesión</a></p>
+      <p class="alerta" id="aviso-red" hidden>{{ ico('alerta') }}<span id="aviso-red-texto">No se pudo actualizar el panel.</span></p>
+    </div>
+    {% if not resumen %}
+    <p class="alerta" role="note">{{ ico('alerta') }}Estado de la plataforma no disponible. Reintentando…</p>
+    {% endif %}
+
+    {# ═══════════════════════ RESUMEN ═══════════════════════ #}
+    {% set sa = K.sedes_activas %}{% set st = K.sedes_total %}
+    {% set rech = (K.mensajes_rechazados if K.mensajes_rechazados is number else 0) + (K.mensajes_muertos if K.mensajes_muertos is number else 0) %}
+    {% set fall = (K.porcentaje_fallidos if K.porcentaje_fallidos is number else 0)|float %}
+    {% set integra_k = K.auditoria_integra %}
+    <section class="seccion" id="resumen" aria-labelledby="t-resumen">
+      <h2 class="seccion-titulo" id="t-resumen" tabindex="-1">{{ ico('tablero') }}Resumen</h2>
+      <div class="kpis kpis-panel" id="kpis">
+        <div class="kpi {{ 'ok' if sa is number and sa == st else 'down' }}" data-tile="sedes">
+          <div class="kpi-cab"><h3>Sedes activas</h3><span class="kpi-ico">{{ ico('servidor') }}</span></div>
+          <div class="kpi-valor"><span data-k="sedes_activas" data-valor="{{ valor(sa) }}">{{ n(sa) }}</span> <small>/ <span data-k="sedes_total" data-valor="{{ valor(st) }}">{{ n(st) }}</span></small></div>
+          <span class="pie">Bases de datos de las sedes</span>
+        </div>
+        <div class="kpi {{ 'ok' if K.hapi == 'UP' else 'down' }}" data-tile="hapi">
+          <div class="kpi-cab"><h3>Servidor FHIR</h3><span class="kpi-ico">{{ ico('capas') }}</span></div>
+          <div class="kpi-valor"><span id="k-hapi" class="badge badge-lg punto {{ 'b-ok' if K.hapi == 'UP' else ('b-err' if K.hapi else 'b-neutro') }}">{{ 'UP' if K.hapi == 'UP' else ('DOWN' if K.hapi else '—') }}</span></div>
+          <span class="pie">HAPI FHIR R4</span>
+        </div>
+        <div class="kpi" data-tile="cobertura">
+          <div class="kpi-cab"><h3>Cobertura FHIR</h3><span class="kpi-ico">{{ ico('check') }}</span></div>
+          <div class="kpi-valor"><span data-k="cobertura_fhir_global" data-valor="{{ valor(K.cobertura_fhir_global) }}">{{ n(K.cobertura_fhir_global) }}</span> <small>%</small></div>
+          {{ barra(K.cobertura_fhir_global, 'Cobertura FHIR global', 'k-cob-barra') }}
+          <span class="pie">Pacientes publicados en FHIR</span>
+        </div>
+        <div class="kpi" data-tile="pacientes">
+          <div class="kpi-cab"><h3>Pacientes</h3><span class="kpi-ico">{{ ico('usuarios') }}</span></div>
+          <div class="kpi-valor"><span data-k="pacientes_total" data-valor="{{ valor(K.pacientes_total) }}">{{ n(K.pacientes_total) }}</span></div>
+          <span class="pie"><span data-k="pacientes_con_fhir" data-valor="{{ valor(K.pacientes_con_fhir) }}">{{ n(K.pacientes_con_fhir) }}</span> en FHIR</span>
+        </div>
+        <div class="kpi" data-tile="recibidos">
+          <div class="kpi-cab"><h3>Mensajes recibidos</h3><span class="kpi-ico">{{ ico('bus') }}</span></div>
+          <div class="kpi-valor"><span data-k="mensajes_recibidos" data-valor="{{ valor(K.mensajes_recibidos) }}">{{ n(K.mensajes_recibidos) }}</span></div>
+          <span class="pie"><span data-k="mensajes_ultimo_minuto" data-valor="{{ valor(K.mensajes_ultimo_minuto) }}">{{ n(K.mensajes_ultimo_minuto) }}</span> en el último minuto</span>
+        </div>
+        <div class="kpi ok" data-tile="entregados">
+          <div class="kpi-cab"><h3>Entregados</h3><span class="kpi-ico">{{ ico('check') }}</span></div>
+          <div class="kpi-valor"><span data-k="mensajes_entregados" data-valor="{{ valor(K.mensajes_entregados) }}">{{ n(K.mensajes_entregados) }}</span></div>
+          <span class="pie"><span data-k="duplicados" data-valor="{{ valor(K.duplicados) }}">{{ n(K.duplicados) }}</span> duplicados detectados</span>
+        </div>
+        <div class="kpi {{ 'down' if (K.mensajes_muertos or 0) > 0 else ('warn' if rech > 0 else 'ok') }}" data-tile="rechazados">
+          <div class="kpi-cab"><h3>Rechazados y muertos</h3><span class="kpi-ico">{{ ico('x') }}</span></div>
+          <div class="kpi-valor"><span data-k="rechazados_muertos" data-valor="{{ rech }}">{{ n(rech) }}</span></div>
+          <span class="pie"><span data-k="mensajes_rechazados" data-valor="{{ valor(K.mensajes_rechazados) }}">{{ n(K.mensajes_rechazados) }}</span> rechazados · <span data-k="mensajes_muertos" data-valor="{{ valor(K.mensajes_muertos) }}">{{ n(K.mensajes_muertos) }}</span> muertos · <span data-k="mensajes_reintentando" data-valor="{{ valor(K.mensajes_reintentando) }}">{{ n(K.mensajes_reintentando) }}</span> en reintento</span>
+        </div>
+        <div class="kpi" data-tile="latencia">
+          <div class="kpi-cab"><h3>Latencia media</h3><span class="kpi-ico">{{ ico('reloj') }}</span></div>
+          <div class="kpi-valor"><span data-k="latencia_media_ms" data-valor="{{ valor(K.latencia_media_ms) }}">{{ n(K.latencia_media_ms) }}</span> <small>ms</small></div>
+          <span class="pie">Bus de integración</span>
+        </div>
+        <div class="kpi {{ 'down' if fall >= 20 else ('warn' if fall > 0 else 'ok') }}" data-tile="fallidos">
+          <div class="kpi-cab"><h3>Mensajes fallidos</h3><span class="kpi-ico">{{ ico('alerta') }}</span></div>
+          <div class="kpi-valor"><span data-k="porcentaje_fallidos" data-valor="{{ valor(K.porcentaje_fallidos) }}">{{ n(K.porcentaje_fallidos) }}</span> <small>%</small></div>
+          <span class="pie">Bus: <span id="k-bus-estado">{{ (R.bus or {}).estado_general or '—' }}</span></span>
+        </div>
+        <div class="kpi {{ 'ok' if integra_k is sameas true else ('down' if integra_k is sameas false else '') }}" data-tile="auditoria">
+          <div class="kpi-cab"><h3>Eventos de auditoría</h3><span class="kpi-ico">{{ ico('escudo') }}</span></div>
+          <div class="kpi-valor"><span data-k="eventos_auditoria" data-valor="{{ valor(K.eventos_auditoria) }}">{{ n(K.eventos_auditoria) }}</span></div>
+          <span class="pie"><span id="k-integra" class="badge {{ 'b-ok' if integra_k is sameas true else ('b-err' if integra_k is sameas false else 'b-neutro') }}">{{ 'Cadena ÍNTEGRA' if integra_k is sameas true else ('Cadena ALTERADA' if integra_k is sameas false else 'Verificador no disponible') }}</span></span>
+        </div>
+      </div>
+
+      <div class="card" role="group" aria-labelledby="t-sedes">
+        <h3 class="card-titulo" id="t-sedes">{{ ico('servidor') }}Sedes</h3>
+        <div class="grid-tablero" id="sedes">
+          {% for sd in (R.sedes or []) %}
+          {% set sid = sd.sede_id %}
+          <article class="metric-box nodo {{ 'ok' if sd.disponible else 'down' }}" data-sede="{{ sid if sid is not none else '' }}">
+            <h4>Sede {{ sid if sid is not none else '—' }} · {{ sd.nombre or '—' }}</h4>
+            <p class="nodo-cab">{{ motor(sd.motor) }}
+              {% if sd.disponible %}<span class="badge punto b-ok">UP</span>{% else %}<span class="badge punto b-err">DOWN</span>{% endif %}
+              {% if sd.ciudad %}<span class="badge b-sede">{{ sd.ciudad }}</span>{% endif %}</p>
+            <dl class="datos datos-2">
+              <div><dt>Pacientes</dt><dd>{{ n(sd.total_pacientes) }}</dd></div>
+              <div><dt>Con FHIR</dt><dd>{{ n(sd.pacientes_con_fhir) }}</dd></div>
+              <div><dt>Latencia</dt><dd>{{ n(sd.latencia_ms) ~ ' ms' if sd.latencia_ms is number else '—' }}</dd></div>
+              <div><dt>Cobertura FHIR</dt><dd>{{ n(sd.porcentaje_cobertura) ~ ' %' if sd.porcentaje_cobertura is number else '—' }}</dd></div>
+            </dl>
+            {{ barra(sd.porcentaje_cobertura, 'Cobertura FHIR de la sede ' ~ (sid if sid is not none else '')) }}
+            {% if sd.error %}<p class="nodo-error mono">{{ ico('alerta') }} {{ sd.error }}</p>{% endif %}
+          </article>
+          {% else %}
+          <p class="muted">Sin información de las sedes.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% set A = R.auditoria or {} %}
+      <div class="rejilla-2">
+        <div class="card" role="group" aria-labelledby="t-act-bus">
+          <div class="card-cab">
+            <h3 class="card-titulo" id="t-act-bus">{{ ico('bus') }}Mensajes recientes</h3>
+            <a href="#integracion" data-seccion="integracion" class="enlace-sec">Ver todos<span class="sr-only"> los mensajes</span></a>
+          </div>
+          <ul class="actividad" id="act-mensajes">
+            {% for m in (R.mensajes or [])[:8] %}
+            <li>{{ estado_msg(m.estado) }}<span class="act-texto">{{ m.tipo_mensaje or '—' }} · {{ sede_txt(m.sede_origen) }}</span><time class="act-hora">{{ fecha(m.actualizado_en) }}</time></li>
+            {% else %}
+            <li class="vacio">Sin mensajes recientes.</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="card" role="group" aria-labelledby="t-act-aud">
+          <div class="card-cab">
+            <h3 class="card-titulo" id="t-act-aud">{{ ico('escudo') }}Eventos de auditoría recientes</h3>
+            <a href="#auditoria" data-seccion="auditoria" class="enlace-sec">Ver todos<span class="sr-only"> los eventos</span></a>
+          </div>
+          <ul class="actividad" id="act-auditoria">
+            {% for ev in (A.eventos or [])[:8] %}
+            <li>{{ resultado_aud(ev.resultado) }}<span class="act-texto"><code>{{ ev.tipo_evento or '—' }}</code> · {{ ev.usuario_sistema or '—' }}</span><time class="act-hora">{{ fecha(ev.timestamp) }}</time></li>
+            {% else %}
+            <li class="vacio">Sin eventos recientes.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    {# ═══════════════════════ PACIENTES ═══════════════════════ #}
+    {% set PL = pacientes or {} %}
+    {% set lista = PL.pacientes or [] %}
+    {% set D = DOMINIOS or {} %}
+    {% set dsexo = (D.get('sexo') or {}).get('codigos') or {} %}
+    {% set dunidad = (D.get('unidad_edad') or {}).get('codigos') or {} %}
+    <section class="seccion" id="pacientes" aria-labelledby="t-pacientes">
+      <h2 class="seccion-titulo" id="t-pacientes" tabindex="-1">{{ ico('usuario') }}Pacientes</h2>
+
+      {% macro opciones(dom, vacio='— Seleccione —') -%}
+        <option value="">{{ vacio }}</option>
+        {%- for cod, et in (((DOMINIOS or {}).get(dom) or {}).get('codigos') or {}).items() %}
+        <option value="{{ cod }}">{{ cod }} · {{ et }}</option>
+        {%- endfor %}
+      {%- endmacro %}
+      <details class="registrar" id="registrar">
+        <summary>{{ ico('mas') }}<span>Registrar paciente</span></summary>
+        <div class="registrar-cuerpo">
+          <noscript><p class="alerta">{{ ico('info') }}Active JavaScript para registrar desde el panel.</p></noscript>
+          <div id="reg-resultado" tabindex="-1"></div>
+          <div id="reg-errores" class="alerta-err" role="alert" tabindex="-1" hidden></div>
+          <form id="form-registro" novalidate>
+            <fieldset>
+              <legend>Identificación</legend>
+              <div class="grid">
+                <div class="campo">
+                  <label for="r_sede_id">Sede <span class="req" aria-hidden="true">*</span></label>
+                  <select id="r_sede_id" name="sede_id" required aria-describedby="e_sede_id">
+                    <option value="">— Seleccione —</option>
+                    {% for sid, s in (SEDES or {})|dictsort %}
+                    <option value="{{ sid }}"{{ ' selected' if U.sede_id == sid }}>Sede {{ sid }} · {{ s.nombre }}</option>
+                    {% endfor %}
+                  </select>
+                  <small class="error-campo" id="e_sede_id"></small>
+                </div>
+                <div class="campo">
+                  <label for="r_tipo_documento">Tipo de documento</label>
+                  <select id="r_tipo_documento" name="tipo_documento">{{ opciones('tipo_documento') }}</select>
+                </div>
+                <div class="campo">
+                  <label for="r_documento_id">Número de documento <span class="req" aria-hidden="true">*</span></label>
+                  <input type="text" id="r_documento_id" name="documento_id" required inputmode="numeric" pattern="\d{4,15}" maxlength="15" autocomplete="off" aria-describedby="a_documento_id e_documento_id">
+                  <small id="a_documento_id">Solo dígitos, de 4 a 15.</small>
+                  <small class="error-campo" id="e_documento_id"></small>
+                </div>
+                <div class="campo">
+                  <label for="r_nombres">Nombres <span class="req" aria-hidden="true">*</span></label>
+                  <input type="text" id="r_nombres" name="nombres" required maxlength="80" autocomplete="off" aria-describedby="e_nombres">
+                  <small class="error-campo" id="e_nombres"></small>
+                </div>
+                <div class="campo">
+                  <label for="r_apellidos">Apellidos <span class="req" aria-hidden="true">*</span></label>
+                  <input type="text" id="r_apellidos" name="apellidos" required maxlength="80" autocomplete="off" aria-describedby="e_apellidos">
+                  <small class="error-campo" id="e_apellidos"></small>
+                </div>
+                <div class="campo">
+                  <label for="r_fecha_nacimiento">Fecha de nacimiento <span class="req" aria-hidden="true">*</span></label>
+                  <input type="date" id="r_fecha_nacimiento" name="fecha_nacimiento" required aria-describedby="e_fecha_nacimiento">
+                  <small class="error-campo" id="e_fecha_nacimiento"></small>
+                </div>
+                <div class="campo">
+                  <label for="r_sexo">Sexo <span class="req" aria-hidden="true">*</span></label>
+                  <select id="r_sexo" name="sexo" required aria-describedby="e_sexo">{{ opciones('sexo') }}</select>
+                  <small class="error-campo" id="e_sexo"></small>
+                </div>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Residencia y contacto</legend>
+              <div class="grid">
+                <div class="campo">
+                  <label for="r_municipio_residencia">Municipio (código DANE)</label>
+                  <input type="text" id="r_municipio_residencia" name="municipio_residencia" inputmode="numeric" maxlength="5" list="lista-municipios" autocomplete="off">
+                  <datalist id="lista-municipios">
+                    {% for sid, s in (SEDES or {})|dictsort %}{% if s.municipio_dane %}<option value="{{ s.municipio_dane }}">{{ s.ciudad }}</option>{% endif %}{% endfor %}
+                  </datalist>
+                </div>
+                <div class="campo">
+                  <label for="r_zona_residencia">Zona</label>
+                  <select id="r_zona_residencia" name="zona_residencia">{{ opciones('zona_residencia') }}</select>
+                </div>
+                <div class="campo">
+                  <label for="r_direccion_residencia">Dirección</label>
+                  <input type="text" id="r_direccion_residencia" name="direccion_residencia" maxlength="120" autocomplete="off">
+                </div>
+                <div class="campo">
+                  <label for="r_telefono">Teléfono</label>
+                  <input type="tel" id="r_telefono" name="telefono" inputmode="tel" maxlength="15" autocomplete="off">
+                </div>
+                <div class="campo">
+                  <label for="r_correo_electronico">Correo electrónico</label>
+                  <input type="email" id="r_correo_electronico" name="correo_electronico" maxlength="120" autocomplete="off" aria-describedby="e_correo_electronico">
+                  <small class="error-campo" id="e_correo_electronico"></small>
+                </div>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Atención</legend>
+              <div class="grid">
+                <div class="campo">
+                  <label for="r_entidad_salud">Entidad de salud (EPS)</label>
+                  <input type="text" id="r_entidad_salud" name="entidad_salud" maxlength="80" list="lista-eps" autocomplete="off">
+                  <datalist id="lista-eps"><option value="Nueva EPS"><option value="Coosalud EPS"><option value="Sanitas EPS"><option value="Salud Total"></datalist>
+                </div>
+                <div class="campo">
+                  <label for="r_modalidad_entrega">Modalidad</label>
+                  <select id="r_modalidad_entrega" name="modalidad_entrega">{{ opciones('modalidad_entrega') }}</select>
+                </div>
+                <div class="campo">
+                  <label for="r_entorno_atencion">Entorno de atención</label>
+                  <select id="r_entorno_atencion" name="entorno_atencion">{{ opciones('entorno_atencion') }}</select>
+                </div>
+                <div class="campo">
+                  <label for="r_via_ingreso">Vía de ingreso</label>
+                  <select id="r_via_ingreso" name="via_ingreso">{{ opciones('via_ingreso') }}</select>
+                </div>
+                <div class="campo">
+                  <label for="r_clasificacion_triage">Triage</label>
+                  <select id="r_clasificacion_triage" name="clasificacion_triage">{{ opciones('clasificacion_triage', 'Sin triage') }}</select>
+                </div>
+                <div class="campo campo-ancho">
+                  <label for="r_causa_atencion">Motivo de consulta</label>
+                  <input type="text" id="r_causa_atencion" name="causa_atencion" maxlength="200" autocomplete="off">
+                </div>
+                <div class="campo">
+                  <label for="r_cie10_codigo">Diagnóstico de ingreso (CIE-10)</label>
+                  <input type="text" id="r_cie10_codigo" name="cie10_codigo" maxlength="8" pattern="[A-Z][0-9]{2}(\.[0-9]{1,4})?" autocomplete="off" placeholder="Ej. J45.9" aria-describedby="a_cie10_codigo e_cie10_codigo">
+                  <small id="a_cie10_codigo">Opcional. Letra y dos dígitos, con decimales opcionales.</small>
+                  <small class="error-campo" id="e_cie10_codigo"></small>
+                </div>
+                <div class="campo">
+                  <label for="r_descripcion_cie10">Descripción del diagnóstico</label>
+                  <input type="text" id="r_descripcion_cie10" name="descripcion_cie10" maxlength="200" autocomplete="off">
+                </div>
+              </div>
+            </fieldset>
+            <div class="form-pie">
+              <small class="muted"><span class="req" aria-hidden="true">*</span> Campo obligatorio</small>
+              <div class="acciones">
+                <button type="button" class="btn btn-sec" id="btn-ejemplo">{{ ico('dados') }}Datos de ejemplo</button>
+                <button type="submit" class="btn" id="btn-registrar">{{ ico('enviar') }}<span>Registrar paciente</span></button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </details>
+
+      <div class="card">
+        <div class="card-cab">
+          <form class="buscador buscador-pac" id="form-buscar" method="GET" action="/panel" role="search">
+            <div class="campo">
+              <label for="q">Buscar por documento o nombre</label>
+              <input type="search" id="q" name="q" autocomplete="off" placeholder="Ej. 1001 o Pérez" aria-describedby="pac-conteo">
+            </div>
+          </form>
+          <span class="muted" id="pac-conteo">Mostrando {{ lista|length }} de {{ n(PL.total if PL.total is number else lista|length) }}</span>
+        </div>
+        <p class="alerta" id="pac-incompleto"{% if not PL.sedes_no_disponibles %} hidden{% endif %}>{{ ico('alerta') }}<span id="pac-incompleto-texto">{% if PL.sedes_no_disponibles %}Lista incompleta: sin conexión con {% for s in PL.sedes_no_disponibles %}{{ sede_txt(s) }}{{ ', ' if not loop.last }}{% endfor %}.{% endif %}</span></p>
+
+        <div class="tabla-scroll alta">
+          <table class="tabla-panel">
+            <caption class="sr-only">Pacientes de la red, los más recientes primero</caption>
+            <thead>
+              <tr>
+                <th scope="col">Documento</th><th scope="col">Nombre</th><th scope="col">Sexo</th><th scope="col">Edad</th>
+                <th scope="col">Municipio</th><th scope="col">Sedes</th><th scope="col" class="num-col">Atenciones</th>
+                <th scope="col">Última atención</th><th scope="col">FHIR</th><th scope="col"><span class="sr-only">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody id="tbody-pacientes">
+              {% for p in lista %}
+              <tr data-doc="{{ p.documento_id or '' }}">
+                <th scope="row" class="mono">{{ p.documento_id or '—' }}</th>
+                <td>{{ p.nombre_completo or '—' }}</td>
+                <td>{{ dsexo.get(p.sexo, p.sexo) if p.sexo else '—' }}</td>
+                <td class="nowrap">{% if p.edad is not none and p.edad is defined %}{{ p.edad }} {{ (dunidad.get(p.unidad_edad|string, '') if p.unidad_edad is not none else '')|lower }}{% else %}—{% endif %}</td>
+                <td>{{ p.municipio_residencia or '—' }}</td>
+                <td><span class="sedes-celda">
+                  {% for s in (p.sedes or []) %}
+                  <span class="badge {{ 'b-mongo' if s.motor == 'mongodb' else ('b-pg' if s.motor == 'postgresql' else 'b-neutro') }}" title="Sede {{ s.sede_id }} · {{ 'MongoDB' if s.motor == 'mongodb' else ('PostgreSQL' if s.motor == 'postgresql' else s.motor or '—') }} · {{ s.atenciones or 0 }} atenciones{{ ' · en FHIR' if s.en_fhir }}">{{ ico('hoja' if s.motor == 'mongodb' else 'db') }}S{{ s.sede_id }}{% if s.en_fhir %}<span class="fhir-mini">✓FHIR</span>{% endif %}<span class="sr-only"> {{ 'MongoDB' if s.motor == 'mongodb' else 'PostgreSQL' }}{{ ', en FHIR' if s.en_fhir }}</span></span>
+                  {% else %}—{% endfor %}
+                </span></td>
+                <td class="num-col">{{ n(p.total_atenciones) }}</td>
+                <td class="nowrap">{{ fecha(p.ultima_atencion) }}</td>
+                <td>{% if p.en_fhir %}<span class="badge b-ok">{{ ico('check') }}En FHIR</span>{% else %}<span class="badge b-neutro">Sin FHIR</span>{% endif %}</td>
+                <td class="nowrap">{% if p.documento_id %}<a href="/reporte?buscar_doc={{ p.documento_id|urlencode }}">Ver reporte<span class="sr-only"> de {{ p.nombre_completo or p.documento_id }}</span></a>{% endif %}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="10" class="vacio">No hay pacientes registrados.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    {# ═══════════════════════ USUARIOS ═══════════════════════ #}
+    {% set UL = usuarios if usuarios is mapping else {} %}
+    {% set ulista = UL.usuarios or [] %}
+    {% set gestiona = UL.puede_gestionar is sameas true %}
+    {% set sedes_g = UL.sedes_gestionables or [] %}
+    {% set roles_a = UL.roles_asignables or [] %}
+    {% macro fila_usuario(x) -%}
+      {%- set puede = gestiona and x.rol in roles_a and (sedes_g|length > 1 or x.sede_id in sedes_g) -%}
+      <tr data-usuario="{{ x.username or '' }}"{% if x.activo is sameas false %} class="fila-inactiva"{% endif %}>
+        <th scope="row"><span class="mono">{{ x.username or '—' }}</span>
+          {%- if x.documento_id %}<small class="sub-celda">Doc. {{ x.documento_id }}</small>{% endif %}</th>
+        <td>{{ x.nombre_completo or '—' }}</td>
+        <td><span class="badge {{ ROLES_CLS.get(x.rol, 'b-neutro') }}">{{ ROLES_TXT.get(x.rol, x.rol or '—') }}</span></td>
+        <td>{{ sede_txt(x.sede_id) if x.sede_id is not none else 'Toda la red' }}</td>
+        <td>{% if x.activo is sameas false %}<span class="badge punto b-neutro">Inactivo</span>{% else %}<span class="badge punto b-ok">Activo</span>{% endif %}
+          {%- if x.debe_cambiar_clave %} <span class="badge b-warn">Clave temporal</span>{% endif %}
+          <small class="sub-celda">Último acceso: {{ fecha(x.ultimo_acceso) if x.ultimo_acceso else 'nunca' }}</small></td>
+        <td class="registro-celda"><span class="badge b-sede">{{ ORIGEN_TXT.get(x.origen, x.origen or '—') }}</span>
+          <small>{% if x.creado_por %}por {{ x.creado_por }} · {% endif %}{{ fecha(x.creado_en) }}</small></td>
+        <td class="acciones-fila">
+          {%- if puede -%}
+          <span class="solo-js">
+            {%- if x.username != U.username %}<button type="button" class="btn btn-sec btn-sm" data-accion="estado" data-activo="{{ 'false' if x.activo is not sameas false else 'true' }}" data-usuario="{{ x.username }}">{{ 'Desactivar' if x.activo is not sameas false else 'Activar' }}<span class="sr-only"> a {{ x.username }}</span></button>{% endif -%}
+            <button type="button" class="btn btn-sec btn-sm" data-accion="restablecer" data-usuario="{{ x.username }}">Restablecer clave<span class="sr-only"> de {{ x.username }}</span></button>
+          </span>
+          {%- else -%}<span class="muted">—</span>{%- endif -%}
+        </td>
+      </tr>
+    {%- endmacro %}
+    <section class="seccion" id="usuarios" aria-labelledby="t-usuarios">
+      <h2 class="seccion-titulo" id="t-usuarios" tabindex="-1">{{ ico('usuarios') }}Usuarios</h2>
+
+      <details class="registrar solo-js" id="nuevo-usuario"{% if not gestiona %} hidden{% endif %}>
+        <summary>{{ ico('mas') }}<span>Nuevo usuario</span></summary>
+        <div class="registrar-cuerpo">
+          <div id="nu-errores" class="alerta-err" role="alert" tabindex="-1" hidden></div>
+          <form id="form-usuario" novalidate>
+            <div class="grid">
+              <div class="campo">
+                <label for="nu_username">Usuario <span class="req" aria-hidden="true">*</span></label>
+                <input type="text" id="nu_username" name="username" required pattern="[a-z0-9._\-]{4,40}" maxlength="40" autocomplete="off" spellcheck="false" autocapitalize="off" aria-describedby="nu_username_ayuda">
+                <small id="nu_username_ayuda">4 a 40 caracteres: minúsculas, números, punto o guion.</small>
+              </div>
+              <div class="campo">
+                <label for="nu_nombre_completo">Nombre completo <span class="req" aria-hidden="true">*</span></label>
+                <input type="text" id="nu_nombre_completo" name="nombre_completo" required maxlength="120" autocomplete="off">
+              </div>
+              <div class="campo">
+                <label for="nu_rol">Rol <span class="req" aria-hidden="true">*</span></label>
+                <select id="nu_rol" name="rol" required>
+                  <option value="">— Seleccione —</option>
+                  {% for r in roles_a %}<option value="{{ r }}">{{ ROLES_TXT.get(r, r) }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="campo">
+                <label for="nu_documento_id">Documento <span class="req" aria-hidden="true" id="nu_doc_req">*</span></label>
+                <input type="text" id="nu_documento_id" name="documento_id" inputmode="numeric" maxlength="15" autocomplete="off" aria-describedby="nu_documento_ayuda">
+                <small id="nu_documento_ayuda">Obligatorio para paciente, médico y admisionista.</small>
+              </div>
+              <div class="campo">
+                <label for="nu_sede_id">Sede</label>
+                <select id="nu_sede_id" name="sede_id" aria-describedby="nu_sede_ayuda">
+                  {% if sedes_g|length != 1 %}<option value="">Toda la red</option>{% endif %}
+                  {% for s in sedes_g %}<option value="{{ s }}"{{ ' selected' if sedes_g|length == 1 }}>Sede {{ s }}{% if s in SEDES %} · {{ SEDES[s].nombre }}{% endif %}</option>{% endfor %}
+                </select>
+                <small id="nu_sede_ayuda">Obligatoria para médico y admisionista.</small>
+              </div>
+              <div class="campo">
+                <label for="nu_clave">Contraseña inicial</label>
+                <input type="password" id="nu_clave" name="clave" minlength="8" autocomplete="new-password" aria-describedby="nu_clave_ayuda">
+                <small id="nu_clave_ayuda">Opcional. Mínimo 8 caracteres con letras y números; si la deja vacía se genera una temporal.</small>
+              </div>
+            </div>
+            <div class="form-pie">
+              <small class="muted"><span class="req" aria-hidden="true">*</span> Campo obligatorio</small>
+              <button type="submit" class="btn" id="btn-crear-usuario">{{ ico('mas') }}<span>Crear usuario</span></button>
+            </div>
+          </form>
+        </div>
+      </details>
+
+      <div id="usr-resultado" tabindex="-1"></div>
+
+      <div class="card">
+        <div class="card-cab">
+          <form class="filtros-usuarios" id="form-filtro-usuarios" method="GET" action="/panel" role="search" aria-label="Filtrar usuarios">
+            <div class="campo">
+              <label for="uf_q">Buscar</label>
+              <input type="search" id="uf_q" name="uq" autocomplete="off" placeholder="Usuario, nombre o documento">
+            </div>
+            <div class="campo">
+              <label for="uf_rol">Rol</label>
+              <select id="uf_rol" name="urol">
+                <option value="">Todos</option>
+                {% for r, t in ROLES_TXT.items() %}<option value="{{ r }}">{{ t }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="campo">
+              <label for="uf_sede">Sede</label>
+              <select id="uf_sede" name="usede">
+                <option value="">Todas</option>
+                {% for sid, s in (SEDES or {})|dictsort %}<option value="{{ sid }}">Sede {{ sid }} · {{ s.ciudad }}</option>{% endfor %}
+              </select>
+            </div>
+          </form>
+          <span class="muted" id="usr-conteo">{{ ulista|length }} usuario{{ 's' if ulista|length != 1 }}</span>
+        </div>
+        <p class="alerta-info" id="usr-solo-lectura"{% if gestiona or not UL %} hidden{% endif %}>{{ ico('info') }}Solo lectura.</p>
+        <div class="tabla-scroll alta">
+          <table class="tabla-panel tabla-usuarios">
+            <caption class="sr-only">Usuarios del sistema</caption>
+            <thead>
+              <tr>
+                <th scope="col">Usuario</th><th scope="col">Nombre</th><th scope="col">Rol</th>
+                <th scope="col">Sede</th><th scope="col">Estado</th><th scope="col">Registrado</th>
+                <th scope="col">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-usuarios">
+              {% for x in ulista %}
+              {{ fila_usuario(x) }}
+              {% else %}
+              <tr><td colspan="7" class="vacio">{{ 'Sin usuarios.' if UL else 'Lista de usuarios no disponible.' }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <dialog class="dialogo" id="dlg-confirmar" aria-labelledby="dlg-titulo" aria-describedby="dlg-texto">
+        <form method="dialog">
+          <h3 id="dlg-titulo">Confirmar</h3>
+          <p id="dlg-texto"></p>
+          <div class="acciones acciones-fin">
+            <button type="submit" class="btn btn-sec" value="cancelar">Cancelar</button>
+            <button type="submit" class="btn" value="confirmar" id="dlg-ok">Confirmar</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+
+    {# ═══════════════════════ INTEGRACIÓN ═══════════════════════ #}
+    {% set B = R.bus or {} %}
+    {% set F = R.fhir or {} %}
+    <section class="seccion" id="integracion" aria-labelledby="t-integracion">
+      <h2 class="seccion-titulo" id="t-integracion" tabindex="-1">{{ ico('bus') }}Integración</h2>
+      <div class="card">
+        <div class="grafico-cab">
+          <h3 class="card-titulo">Mensajes por estado</h3>
+          {% set eg = (B.estado_general or '')|string|upper %}
+          <span id="bus-estado" class="badge {{ 'b-ok' if eg in ('UP', 'OK', 'SALUDABLE') else ('b-warn' if eg else 'b-neutro') }}">{{ B.estado_general or 'Sin estado' }}</span>
+        </div>
+        {% set pe = {} %}
+        {% for k, v in (B.mensajes_por_estado or {}).items() %}{% set _ = pe.update({(k|string|upper): v}) %}{% endfor %}
+        {% set orden = ['RECIBIDO', 'VALIDADO', 'TRANSFORMADO', 'ENTREGADO', 'REINTENTANDO', 'DUPLICADO', 'RECHAZADO', 'MUERTO'] %}
+        {% set ns = namespace(max=0) %}
+        {% for k, v in pe.items() %}{% if v is number and v > ns.max %}{% set ns.max = v %}{% endif %}{% endfor %}
+        <ul class="barras-h" id="grafico-estados" aria-label="Cantidad de mensajes por estado">
+          {% for e in orden + (pe|dictsort|map('first')|reject('in', orden)|list) %}
+          {% set c = pe.get(e, 0) if pe.get(e, 0) is number else 0 %}
+          <li>
+            <span class="bh-etq">{{ estado_msg(e) }}</span>
+            <span class="bh-pista" aria-hidden="true"><span class="bh-relleno f-{{ e|lower if e in orden else 'otro' }}" style="width: {{ ((c / ns.max * 100) if ns.max else 0)|round(1) }}%"></span></span>
+            <span class="bh-num">{{ n(c) }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% set etq_bus = {'total_recibidos': 'Recibidos', 'total_entregados': 'Entregados', 'total_rechazados': 'Rechazados', 'total_duplicados_detectados': 'Duplicados detectados', 'total_reintentos_ejecutados': 'Reintentos ejecutados', 'total_mensajes_muertos': 'Mensajes muertos', 'mensajes_ultimo_minuto': 'Último minuto', 'latencia_media_ms': 'Latencia media (ms)', 'porcentaje_fallidos': 'Fallidos (%)', 'pendientes_en_cola_reintentos': 'Pendientes de reintento'} %}
+        <dl class="datos datos-compactos" id="bus-contadores">
+          {% for k, v in B|dictsort %}{% if v is number and v is not boolean %}
+          <div><dt>{{ etq_bus.get(k, k|replace('_', ' ')|capitalize) }}</dt><dd>{{ n(v) }}</dd></div>
+          {% endif %}{% endfor %}
+        </dl>
+      </div>
+
+      <div class="card">
+        <div class="card-cab">
+          <h3 class="card-titulo">Últimos mensajes</h3>
+          <div class="campo campo-inline solo-js">
+            <label for="filtro-estado">Estado</label>
+            <select id="filtro-estado">
+              <option value="">Todos</option>
+              {% for e in orden %}<option value="{{ e }}">{{ e|capitalize }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="tabla-scroll alta">
+          <table class="tabla-panel">
+            <caption class="sr-only">Últimos mensajes del bus de integración, el más reciente primero</caption>
+            <thead>
+              <tr><th scope="col">Mensaje</th><th scope="col">Estado</th><th scope="col">Formato</th><th scope="col">Sede</th><th scope="col">Tipo</th>
+                <th scope="col" class="num-col">Intentos</th><th scope="col">Actualizado</th><th scope="col">Motivo</th></tr>
+            </thead>
+            <tbody id="tbody-mensajes">
+              {% for m in (R.mensajes or []) %}
+              <tr data-id="{{ m.mensaje_id or '' }}" data-estado="{{ (m.estado or '')|string|upper }}">
+                <th scope="row">{{ hash_corto(m.mensaje_id) }}</th>
+                <td>{{ estado_msg(m.estado) }}</td>
+                <td><span class="badge b-sede">{{ m.formato or '—' }}</span></td>
+                <td><span class="celda-sede">{{ sede_txt(m.sede_origen) }} {{ motor(m.motor) if m.motor else '' }}</span></td>
+                <td>{{ m.tipo_mensaje or '—' }}</td>
+                <td class="num-col">{{ n(m.intentos) }}</td>
+                <td class="nowrap">{{ fecha(m.actualizado_en) }}</td>
+                <td class="motivo">{{ m.motivo_rechazo or '—' }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="8" class="vacio">Sin mensajes.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    {# ═══════════════════════ FHIR ═══════════════════════ #}
+    <section class="seccion" id="fhir" aria-labelledby="t-fhir">
+      <h2 class="seccion-titulo" id="t-fhir" tabindex="-1">{{ ico('capas') }}FHIR</h2>
+      {% if U.rol == 'administrador' %}
+      <div class="card" id="caja-migracion">
+        <div class="grafico-cab">
+          <h3 class="card-titulo">Publicación de registros históricos</h3>
+          <button type="button" class="btn" id="btn-migrar">Publicar pendientes en FHIR</button>
+        </div>
+        <p class="muted" style="margin:0">Publica en el servidor FHIR los pacientes que ya existían en cada sede y aún no tienen recurso Patient.</p>
+        <div id="migracion-resultado" role="status" aria-live="polite"></div>
+      </div>
+      <script>
+      (function () {
+        var b = document.getElementById('btn-migrar'), out = document.getElementById('migracion-resultado');
+        if (!b) return;
+        b.addEventListener('click', function () {
+          b.disabled = true; out.textContent = 'Publicando…';
+          fetch('/api/panel/migrar', { method: 'POST', credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              out.textContent = '';
+              var ul = document.createElement('ul');
+              (d.sedes || []).forEach(function (s) {
+                var li = document.createElement('li');
+                li.textContent = s.nombre + ' (' + s.motor + '): ' + s.publicados + ' publicados, ' + s.ya_publicados +
+                  ' ya estaban · cobertura FHIR ' + (s.cobertura_fhir == null ? '—' : s.cobertura_fhir + ' %') +
+                  (s.errores && s.errores.length ? ' · ' + s.errores.length + ' con error' : '');
+                ul.appendChild(li);
+              });
+              if (!ul.children.length) ul.textContent = d.detail || d.error || 'Sin respuesta del bus';
+              out.appendChild(ul);
+            })
+            .catch(function () { out.textContent = 'No se pudo contactar el bus.'; })
+            .then(function () { b.disabled = false; });
+        });
+      })();
+      </script>
+      {% endif %}
+      <div class="card {{ 'caja-down' if F and not F.disponible }}" id="caja-fhir">
+        <div class="grafico-cab">
+          <h3 class="card-titulo">Servidor HAPI FHIR R4</h3>
+          <span id="fhir-estado" class="badge punto {{ 'b-ok' if F.disponible else ('b-err' if F else 'b-neutro') }}">{{ 'Disponible' if F.disponible else ('No disponible' if F else 'Sin datos') }}</span>
+        </div>
+        <dl class="datos datos-compactos datos-fhir">
+          <div><dt>Cobertura FHIR</dt><dd><span data-k="cobertura_fhir_global" data-valor="{{ valor(K.cobertura_fhir_global) }}">{{ n(K.cobertura_fhir_global) }}</span> %</dd></div>
+          <div><dt>Pacientes en FHIR</dt><dd><span data-k="pacientes_con_fhir" data-valor="{{ valor(K.pacientes_con_fhir) }}">{{ n(K.pacientes_con_fhir) }}</span> de <span data-k="pacientes_total" data-valor="{{ valor(K.pacientes_total) }}">{{ n(K.pacientes_total) }}</span></dd></div>
+        </dl>
+        {% set rec = F.recursos or {} %}
+        {% set orden_f = ['Patient', 'Encounter', 'Condition', 'Observation', 'MedicationRequest', 'AllergyIntolerance', 'Practitioner', 'Organization'] %}
+        {% set nf = namespace(max=0, total=0) %}
+        {% for k, v in rec.items() %}{% if v is number %}{% set nf.total = nf.total + v %}{% if v > nf.max %}{% set nf.max = v %}{% endif %}{% endif %}{% endfor %}
+        <h4>Recursos por tipo</h4>
+        <div id="grafico-fhir">
+        {% if F.disponible and rec %}
+          <ul class="barras-h" aria-label="Recursos FHIR por tipo">
+            {% for r in orden_f + (rec|dictsort|map('first')|reject('in', orden_f)|list) %}{% if r in rec %}
+            {% set c = rec[r] if rec[r] is number else 0 %}
+            <li>
+              <span class="bh-etq"><code>{{ r }}</code></span>
+              <span class="bh-pista" aria-hidden="true"><span class="bh-relleno f-fhir" style="width: {{ ((c / nf.max * 100) if nf.max else 0)|round(1) }}%"></span></span>
+              <span class="bh-num">{{ n(c) }}</span>
+            </li>
+            {% endif %}{% endfor %}
+          </ul>
+          <p class="muted grafico-pie">Total: <strong>{{ n(nf.total) }}</strong> recursos</p>
+        {% elif F.disponible %}
+          <p class="muted">Sin recursos publicados.</p>
+        {% else %}
+          <p class="alerta-err">{{ ico('x') }}Servidor FHIR sin respuesta.</p>
+        {% endif %}
+        </div>
+      </div>
+    </section>
+
+    {# ═══════════════════════ AUDITORÍA ═══════════════════════ #}
+    {% set integra = A.cadena_integra %}
+    {% set alt = A.detalle_alteracion if integra is sameas false else none %}
+    <section class="seccion" id="auditoria" aria-labelledby="t-auditoria">
+      <div class="seccion-cab">
+        <h2 class="seccion-titulo" id="t-auditoria" tabindex="-1">{{ ico('escudo') }}Auditoría</h2>
+        <a class="btn btn-sec btn-sm" href="/reporte?pestana=tablero#prueba-integridad">{{ ico('alerta') }}Prueba de integridad</a>
+      </div>
+      <div class="card" id="verificador">
+        <div class="verif {{ 'ok' if integra is sameas true else ('err' if integra is sameas false else 'na') }}">
+          <span class="icono">{{ ico('escudo-ok' if integra is sameas true else ('alerta' if integra is sameas false else 'info')) }}</span>
+          <div class="verif-cuerpo">
+            <div class="rotulo">Estado de la cadena</div>
+            <div class="estado">{% if integra is sameas true %}ÍNTEGRA{% elif integra is sameas false %}ALERTA: cadena alterada{% else %}NO DISPONIBLE{% endif %}</div>
+            {% if A.estado_verificador %}<p class="verif-texto">{{ A.estado_verificador }}</p>{% endif %}
+            {% if alt %}
+            <h4>Primer evento alterado</h4>
+            <dl class="datos">
+              <div><dt>Índice</dt><dd><strong>{{ alt.indice if alt.indice is not none else '—' }}</strong></dd></div>
+              <div><dt>Motivo</dt><dd>{{ alt.motivo or '—' }}</dd></div>
+              <div><dt>Usuario (registrado)</dt><dd>{{ alt.usuario or '—' }}</dd></div>
+              <div><dt>Tipo de evento</dt><dd>{{ alt.tipo_evento or '—' }}</dd></div>
+              <div><dt>Fecha del evento</dt><dd>{{ fecha(alt.timestamp) }}</dd></div>
+            </dl>
+            {% endif %}
+          </div>
+        </div>
+        <dl class="datos">
+          <div><dt>Eventos registrados</dt><dd>{{ n(A.total_eventos_registrados) }}</dd></div>
+          <div><dt>Eventos en espera</dt><dd>{{ n(A.eventos_en_espera) }}</dd></div>
+          <div><dt>Base central</dt><dd>{% if A.disponible %}<span class="badge punto b-ok">UP</span>{% else %}<span class="badge punto b-err">DOWN</span>{% endif %}</dd></div>
+          <div class="ancho"><dt>Último hash de la cadena</dt><dd>{{ chip_sello(A.ultimo_hash) }}</dd></div>
+        </dl>
+      </div>
+
+      <div class="card">
+        <h3 class="card-titulo">Últimos eventos</h3>
+        <div class="tabla-scroll alta">
+          <table class="tabla-panel">
+            <caption class="sr-only">Últimos eventos de la cadena de auditoría, el más reciente primero</caption>
+            <thead>
+              <tr><th scope="col" class="num-col">Índice</th><th scope="col">Cuándo</th><th scope="col">Quién</th><th scope="col">Rol</th><th scope="col">Evento</th>
+                <th scope="col">Recurso</th><th scope="col">Resultado</th><th scope="col">Hash</th></tr>
+            </thead>
+            <tbody id="tbody-auditoria">
+              {% for ev in (A.eventos or []) %}
+              {% set es_alt = alt and alt.indice is not none and ev.indice == alt.indice %}
+              <tr data-id="{{ ev.indice if ev.indice is not none else '' }}"{% if es_alt %} class="fila-alterada"{% endif %}>
+                <th scope="row" class="num-col">{{ ev.indice if ev.indice is not none else '—' }}{% if es_alt %} <span class="badge b-err">alterado</span>{% endif %}</th>
+                <td class="nowrap">{{ fecha(ev.timestamp) }}</td>
+                <td>{{ ev.usuario_sistema or '—' }}</td>
+                <td>{{ ev.rol or '—' }}</td>
+                <td><code>{{ ev.tipo_evento or '—' }}</code></td>
+                <td class="motivo mono">{{ ev.recurso_afectado or '—' }}</td>
+                <td>{{ resultado_aud(ev.resultado) }}</td>
+                <td>{{ hash_corto(ev.hash_propio) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="8" class="vacio">Sin eventos de auditoría.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+  </div>
+  {{ marco.pie() }}
+  <script type="application/json" id="panel-config">{{ {
+    'sedes': SEDES or {},
+    'sexo': dsexo,
+    'unidad_edad': dunidad,
+    'etq_bus': etq_bus,
+    'roles': ROLES_TXT,
+    'origenes': ORIGEN_TXT,
+    'yo': U.username or '',
+    'alcance': {'puede_gestionar': gestiona, 'sedes_gestionables': sedes_g, 'roles_asignables': roles_a, 'cargado': UL is mapping and UL|length > 0}
+  }|tojson }}</script>
+</body>
+</html>
