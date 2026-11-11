@@ -1,0 +1,10 @@
+# Scripts y archivos que se ejecutan dentro de Linux/contenedores: siempre con saltos de línea LF
+*.sh   text eol=lf
+*.sql  text eol=lf
+*.js   text eol=lf
+*.py   text eol=lf
+Dockerfile text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.hl7  -text
+*.csv  -text

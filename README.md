@@ -67,7 +67,28 @@ unificada de un paciente **sin reemplazar los sistemas legados**.
 - Docker ≥ 24 con Compose v2 (probado en Kali Linux, 4 GB de RAM)
 - `curl` para enviar los ejemplos · Python 3.11+ solo para correr las pruebas fuera de Docker
 
-## 4. Ejecución (un solo comando)
+## 4. Despliegue
+
+### Opción recomendada: script de despliegue (Kali / Debian / Ubuntu)
+
+```bash
+bash desplegar.sh --desde-cero --con-datos --verificar
+```
+
+`desplegar.sh` instala Docker y Docker Compose si faltan, crea el `.env` con un secreto JWT aleatorio,
+cambia los puertos que estén ocupados por otro servicio, levanta las 4 bases (las sedes y la central se
+inicializan solas desde `db/`), HAPI FHIR, el bus y la API, espera a que todo esté sano y muestra las URL.
+
+| Opción | Qué hace |
+|---|---|
+| *(sin opciones)* | Instala lo que falte y levanta conservando los datos existentes |
+| `--desde-cero` | Borra los volúmenes y arranca limpio (cobertura FHIR 0 %, como pide la demo) |
+| `--con-datos` | Carga los mensajes del docente y 60 pacientes sintéticos, y los publica en FHIR (100 %) |
+| `--verificar` | Corre `scripts/verificar_interoperabilidad.py` (todas las comprobaciones, sede por sede) |
+| `--pacientes=N` | Cantidad de pacientes sintéticos con `--con-datos` |
+| `--detener` | Apaga la plataforma sin borrar datos |
+
+### Opción manual (un solo comando de Docker)
 
 ```bash
 cp .env.example .env            # ajuste puertos si alguno está ocupado
