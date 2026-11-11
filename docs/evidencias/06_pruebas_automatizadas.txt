@@ -1,47 +1,63 @@
-# Evidencia: pruebas automatizadas — 2026-11-11 00:26
+# Evidencia: pruebas automatizadas — 2026-11-11 12:23
 $ python -m pytest tests -v
-tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso1_paciente_valido_id_determinista PASSED
-tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso2_invalido_documento PASSED
-tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso3_encounter_clase_triage_y_periodo PASSED
-tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso4_invalido_cie10 PASSED
-tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso5_observation_loinc PASSED
-tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso6_bundle_transaction_put_y_referencias_internas PASSED
-tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso7_reenviar_produce_el_mismo_bundle PASSED
-tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso8_mensaje_57_campos_produce_todos_los_recursos PASSED
-tests/fase2/test_traductor_57.py::TestCatalogo::test_hay_57_campos_numerados_y_cada_uno_tiene_destino PASSED
-tests/fase2/test_traductor_57.py::TestCatalogo::test_schema_sql_tiene_todas_las_columnas_del_catalogo PASSED
-tests/fase2/test_traductor_57.py::TestTraduccionDeValores::test_edad_y_unidad PASSED
-tests/fase2/test_traductor_57.py::TestTraduccionDeValores::test_sinonimos_de_cada_sede PASSED
-tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_csv_legado_y_terminologia PASSED
-tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_hl7_57_campos_cobertura PASSED
-tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_json_plano_por_numero_de_campo PASSED
-tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_mongo_fusion_no_borra_datos_previos PASSED
-tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_mongo_ida_y_vuelta_conserva_los_57 PASSED
-tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_postgres_genera_filas_por_tabla PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_01_adt_valido_llega_a_la_sede_2 PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_02_oru_laboratorio_sede_1 PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_03_adt_invalido_tres_motivos PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_04_csv_legado_sede_3 PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_05_idempotencia PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_06_idempotencia_csv PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_07_reintento_y_entrega_al_volver_hapi PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_08_mensaje_muerto_y_reencolar PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_09_sede_caida_se_entrega_al_volver PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_10_error_de_datos_no_se_reintenta PASSED
-tests/fase3/test_hsb_integration.py::TestHSB::test_11_mensaje_parcial_no_pierde_datos_en_fhir PASSED
-tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_admisionista_intenta_ver_historia_clinica_denegado_403 PASSED
-tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_auditor_consulta_historia_para_reporte_permitido PASSED
-tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_cadena_auditoria_integra_valida PASSED
-tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_deteccion_de_alteracion_maliciosa_en_auditoria PASSED
-tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_medico_consulta_historia_cualquier_paciente_permitido PASSED
-tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_paciente_intenta_ver_historia_ajena_denegado_403 PASSED
-tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_paciente_ve_su_propia_historia_permitido PASSED
-tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_resiliencia_consulta_unificada_con_sede_caida PASSED
-tests/fase4/test_usuarios.py::TestUsuarios::test_admin_de_sede_solo_crea_en_su_sede PASSED
-tests/fase4/test_usuarios.py::TestUsuarios::test_auditor_no_gestiona_y_admin_de_sede_ve_solo_su_sede PASSED
-tests/fase4/test_usuarios.py::TestUsuarios::test_clave_temporal_y_cambio_obligatorio PASSED
-tests/fase4/test_usuarios.py::TestUsuarios::test_cuenta_del_paciente_al_admitir PASSED
-tests/fase4/test_usuarios.py::TestUsuarios::test_desactivar_impide_el_ingreso PASSED
-tests/fase4/test_usuarios.py::TestUsuarios::test_paciente_debe_existir PASSED
-tests/fase4/test_usuarios.py::TestUsuarios::test_semilla_y_login PASSED 
-============================= 44 passed in 8.78s ==============================
+tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso1_paciente_valido_id_determinista PASSED [  1%]
+tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso2_invalido_documento PASSED [  3%]
+tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso3_encounter_clase_triage_y_periodo PASSED [  5%]
+tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso4_invalido_cie10 PASSED [  6%]
+tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso5_observation_loinc PASSED [  8%]
+tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso6_bundle_transaction_put_y_referencias_internas PASSED [ 10%]
+tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso7_reenviar_produce_el_mismo_bundle PASSED [ 11%]
+tests/fase2/test_normalizer.py::TestNormalizadorFHIR::test_caso8_mensaje_57_campos_produce_todos_los_recursos PASSED [ 13%]
+tests/fase2/test_traductor_57.py::TestCatalogo::test_hay_57_campos_numerados_y_cada_uno_tiene_destino PASSED [ 15%]
+tests/fase2/test_traductor_57.py::TestCatalogo::test_schema_sql_tiene_todas_las_columnas_del_catalogo PASSED [ 16%]
+tests/fase2/test_traductor_57.py::TestTraduccionDeValores::test_edad_y_unidad PASSED [ 18%]
+tests/fase2/test_traductor_57.py::TestTraduccionDeValores::test_sinonimos_de_cada_sede PASSED [ 20%]
+tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_csv_legado_y_terminologia PASSED [ 21%]
+tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_hl7_57_campos_cobertura PASSED [ 23%]
+tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_json_plano_por_numero_de_campo PASSED [ 25%]
+tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_mongo_fusion_no_borra_datos_previos PASSED [ 26%]
+tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_mongo_ida_y_vuelta_conserva_los_57 PASSED [ 28%]
+tests/fase2/test_traductor_57.py::TestIdaYVuelta::test_postgres_genera_filas_por_tabla PASSED [ 30%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_01_adt_valido_llega_a_la_sede_2 PASSED [ 31%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_02_oru_laboratorio_sede_1 PASSED [ 33%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_03_adt_invalido_tres_motivos PASSED [ 35%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_04_csv_legado_sede_3 PASSED [ 36%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_05_idempotencia PASSED [ 38%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_06_idempotencia_csv PASSED [ 40%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_07_reintento_y_entrega_al_volver_hapi PASSED [ 41%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_08_mensaje_muerto_y_reencolar PASSED [ 43%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_09_sede_caida_se_entrega_al_volver PASSED [ 45%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_10_error_de_datos_no_se_reintenta PASSED [ 46%]
+tests/fase3/test_hsb_integration.py::TestHSB::test_11_mensaje_parcial_no_pierde_datos_en_fhir PASSED [ 48%]
+tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_admisionista_intenta_ver_historia_clinica_denegado_403 PASSED [ 50%]
+tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_auditor_consulta_historia_para_reporte_permitido PASSED [ 51%]
+tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_cadena_auditoria_integra_valida PASSED [ 53%]
+tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_deteccion_de_alteracion_maliciosa_en_auditoria PASSED [ 55%]
+tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_medico_consulta_historia_cualquier_paciente_permitido PASSED [ 56%]
+tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_paciente_intenta_ver_historia_ajena_denegado_403 PASSED [ 58%]
+tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_paciente_ve_su_propia_historia_permitido PASSED [ 60%]
+tests/fase4/test_security_resilience.py::TestSeguridadYResiliencia::test_resiliencia_consulta_unificada_con_sede_caida PASSED [ 61%]
+tests/fase4/test_usuarios.py::TestUsuarios::test_admin_de_sede_solo_crea_en_su_sede PASSED [ 63%]
+tests/fase4/test_usuarios.py::TestUsuarios::test_auditor_no_gestiona_y_admin_de_sede_ve_solo_su_sede PASSED [ 65%]
+tests/fase4/test_usuarios.py::TestUsuarios::test_clave_temporal_y_cambio_obligatorio PASSED [ 66%]
+tests/fase4/test_usuarios.py::TestUsuarios::test_cuenta_del_paciente_al_admitir PASSED [ 68%]
+tests/fase4/test_usuarios.py::TestUsuarios::test_desactivar_impide_el_ingreso PASSED [ 70%]
+tests/fase4/test_usuarios.py::TestUsuarios::test_paciente_debe_existir PASSED [ 71%]
+tests/fase4/test_usuarios.py::TestUsuarios::test_semilla_y_login PASSED  [ 73%]
+tests/fase5/test_oauth_seguridad.py::TestServidorOAuth::test_api_rechaza_token_de_servicio_y_acepta_bearer_de_usuario PASSED [ 75%]
+tests/fase5/test_oauth_seguridad.py::TestServidorOAuth::test_client_credentials_de_sede_lleva_sede_y_audiencia_hsb PASSED [ 76%]
+tests/fase5/test_oauth_seguridad.py::TestServidorOAuth::test_contrasena_incorrecta_400_invalid_grant PASSED [ 78%]
+tests/fase5/test_oauth_seguridad.py::TestServidorOAuth::test_grant_no_soportado_y_cliente_no_autorizado PASSED [ 80%]
+tests/fase5/test_oauth_seguridad.py::TestServidorOAuth::test_jwks_y_metadatos PASSED [ 81%]
+tests/fase5/test_oauth_seguridad.py::TestServidorOAuth::test_password_grant_emite_token_rs256_con_scopes_del_rol PASSED [ 83%]
+tests/fase5/test_oauth_seguridad.py::TestServidorOAuth::test_refresh_token_rota_y_el_viejo_queda_invalido PASSED [ 85%]
+tests/fase5/test_oauth_seguridad.py::TestServidorOAuth::test_revocacion_e_introspeccion PASSED [ 86%]
+tests/fase5/test_oauth_seguridad.py::TestServidorOAuth::test_scope_fuera_del_rol_invalid_scope PASSED [ 88%]
+tests/fase5/test_oauth_seguridad.py::TestServidorOAuth::test_secreto_de_cliente_incorrecto_401_invalid_client PASSED [ 90%]
+tests/fase5/test_oauth_seguridad.py::TestAutorizacionHSB::test_scope_admin_requerido PASSED [ 91%]
+tests/fase5/test_oauth_seguridad.py::TestAutorizacionHSB::test_sin_token_401_con_www_authenticate PASSED [ 93%]
+tests/fase5/test_oauth_seguridad.py::TestAutorizacionHSB::test_sistema_de_sede_solo_escribe_en_su_sede PASSED [ 95%]
+tests/fase5/test_oauth_seguridad.py::TestAutorizacionHSB::test_token_alterado_rechazado PASSED [ 96%]
+tests/fase5/test_oauth_seguridad.py::TestAutorizacionHSB::test_token_de_usuario_no_sirve_en_el_bus PASSED [ 98%]
+tests/fase5/test_oauth_seguridad.py::TestAutorizacionHSB::test_validador_rechaza_token_vencido PASSED [100%]
+============================= 60 passed in 8.44s ==============================

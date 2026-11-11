@@ -1,0 +1,64 @@
+# Evidencia de seguridad v3 · 2026-11-11 12:21 · VM Kali Linux (Docker)
+
+# 1. OAuth 2.0: token de servicio (client_credentials) y su contenido
+  Token OAuth 2.0 listo ($TOKEN)
+    algoritmo: RS256 · kid: a11f39b8f2246e1b
+    cliente: herramientas_qa · audiencia: ['hsb'] · scope: hsb.ingesta hsb.admin
+    vence: 12:36:44
+
+# 2. OAuth 2.0: el bus exige token válido
+$ $CURL -o /dev/null -w "sin token: %{http_code}\n" -X POST --data-binary @ejemplos/01_adt_a01_valido_sede2.hl7 https://localhost:8001/hsb/hl7
+sin token: 401
+
+$ $CURL -o /dev/null -w "con token: %{http_code}\n" -H "Authorization: Bearer $TOKEN" -X POST --data-binary @ejemplos/01_adt_a01_valido_sede2.hl7 https://localhost:8001/hsb/hl7
+con token: 200
+
+$ $CURL -o /dev/null -w "token de usuario (aud api): %{http_code}\n" -H "Authorization: Bearer $U" -X POST --data-binary @ejemplos/01_adt_a01_valido_sede2.hl7 https://localhost:8001/hsb/hl7
+token de usuario (aud api): 401
+
+$ $CURL -H "Authorization: Bearer $S1" -X POST --data-binary @ejemplos/04_sede3_legado.csv "https://localhost:8001/hsb/csv?sede=3"
+{"detail":{"error":"insufficient_scope","error_description":"El cliente sistema_sede1 pertenece a la sede 1 y no puede enviar mensajes de la sede 3"}}
+$ $CURL -u herramientas_qa:falso -d grant_type=client_credentials https://localhost:8000/oauth/token
+{"error":"invalid_client","error_description":"Cliente desconocido o secreto incorrecto"}
+# 3. Bases de datos: mínimo privilegio, auditoría de solo agregar y TLS obligatorio
+== 1. Las bases no publican puertos (solo API, bus y HAPI en 127.0.0.1)
+api_gateway	0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+hapi_fhir_r4	127.0.0.1:8090->8080/tcp
+hsb_bus	0.0.0.0:8001->8001/tcp, [::]:8001->8001/tcp
+mongo_sede2	
+pg_central	
+pg_sede1	
+pg_sede3	
+== 2. Mínimo privilegio · el bus (hsb_escritor) intenta BORRAR un paciente de la sede 1
+ERROR:  permission denied for table usuario
+== 3. Mínimo privilegio · la API (api_lector) intenta MODIFICAR la sede 3 (y luego solo lee)
+ERROR:  permission denied for table usuario
+lectura permitida: 53 pacientes
+== 4. Auditoría de solo agregar · la API (api_central) intenta alterar y borrar la cadena
+ERROR:  permission denied for table evento_auditoria
+ERROR:  permission denied for table evento_auditoria
+== 5. MongoDB (sede 2) · api_lector intenta insertar y hsb_escritor intenta borrar
+MongoServerError: not authorized on clinica_cartagena to execute command 
+MongoServerError: not authorized on clinica_cartagena to execute command 
+== 6. Cifrado obligatorio · conexión SIN TLS a PostgreSQL y a MongoDB
+FATAL:  pg_hba.conf rejects connection for host "::1", user "hsb_escritor", database "clinica_sincelejo", no encryption
+MongoServerSelectionError: connection <monitor> to 127.0.0.1:27017 closed
+== 7. Quién se conecta a cada base y con qué cifrado (registro de PostgreSQL)
+   pg_sede1: user=hsb_escritor database=clinica_sincelejo SSL enabled (protocol=TLSv1.3, cipher=TLS_AES_256_GCM_SHA384, bits=256)
+   pg_sede3: user=hsb_escritor database=clinica_corozal SSL enabled (protocol=TLSv1.3, cipher=TLS_AES_256_GCM_SHA384, bits=256)
+   pg_central: user=api_central database=clinica_central SSL enabled (protocol=TLSv1.3, cipher=TLS_AES_256_GCM_SHA384, bits=256)
+   pg_central: user=hapi_srv database=hapi SSL enabled (protocol=TLSv1.3, cipher=TLS_AES_256_GCM_SHA384, bits=256)
+
+# 4. Cifrado entre servidores
+$ openssl s_client -connect localhost:8001 -servername hsb -CAfile certs/ca.pem </dev/null 2>/dev/null | grep -E "subject=|issuer=|Verify return code|Protocol"
+subject=C=CO, O=Red IPS Sucre-Bolivar, CN=hsb
+issuer=C=CO, O=Red IPS Sucre-Bolivar, OU=Plataforma de Interoperabilidad Clinica, CN=CA Plataforma Interoperabilidad
+Protocol: TLSv1.3
+Verify return code: 0 (ok)
+
+$ $CURL -o /dev/null -w "HAPI por HTTPS: %{http_code}\n" https://localhost:8090/fhir/metadata
+HAPI por HTTPS: 200
+
+$ curl -s -o /dev/null -w "HAPI por HTTP plano: %{http_code}\n" http://localhost:8090/fhir/metadata
+HAPI por HTTP plano: 400
+

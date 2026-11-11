@@ -6,13 +6,18 @@ Genera la colección de pruebas de Postman (formato v2.1) de la plataforma y sus
 
 Salida (misma carpeta):
     Plataforma_Interoperabilidad.postman_collection.json
-    entorno_kali.postman_environment.json      (VM Kali 192.168.1.94)
+    entorno_kali.postman_environment.json      (VM Kali; cambie la IP si cambia de red)
     entorno_local.postman_environment.json     (localhost)
+
+Seguridad (v3): todo va por HTTPS con la CA propia (certs/ca.pem) y el bus exige un token OAuth 2.0.
+La carpeta "0. OAuth 2.0" pide los tokens y los guarda como variables; las demás los usan.
+HAPI FHIR no se publica a la red: {{fhir}} apunta a la pasarela autenticada de la API ({{api}}/fhir).
 
 Los mensajes HL7/CSV se toman de ejemplos/ (los del docente, sin modificar) y de tests/datos/.
 Cada petición trae pruebas (pm.test) con el resultado esperado del LEEME.md del docente.
 Se ejecuta en Postman ("Run collection") o con Newman:
-    npx newman run Plataforma_Interoperabilidad.postman_collection.json -e entorno_kali.postman_environment.json
+    npx newman run Plataforma_Interoperabilidad.postman_collection.json -e entorno_kali.postman_environment.json \
+        --ssl-extra-ca-certs ../../certs/ca.pem
 """
 
 import json
@@ -37,14 +42,24 @@ def pre(*lineas):
 
 
 def peticion(nombre, metodo, url, cuerpo=None, tipo="text/plain", eventos=None, auth=None, descripcion="",
-             form=None, seguir_redirecciones=True):
+             form=None, seguir_redirecciones=True, basic=None):
     req = {"method": metodo, "header": [], "url": url, "description": descripcion}
     if cuerpo is not None:
         req["header"].append({"key": "Content-Type", "value": tipo})
         req["body"] = {"mode": "raw", "raw": cuerpo}
     if form is not None:
         req["body"] = {"mode": "urlencoded", "urlencoded": [{"key": k, "value": v} for k, v in form.items()]}
-    if auth:
+    if auth is None:
+        # Por defecto: el bus (salvo el catálogo público) usa el token de servicio y FHIR el de usuario
+        if url.startswith("{{hsb}}/hsb/") and "catalogo" not in url:
+            auth = "token_hsb"
+        elif url.startswith("{{fhir}}"):
+            auth = "token_fhir"
+    if basic:
+        # client_secret_basic (RFC 6749 §2.3.1)
+        req["auth"] = {"type": "basic", "basic": [{"key": "username", "value": basic[0], "type": "string"},
+                                                  {"key": "password", "value": basic[1], "type": "string"}]}
+    elif auth:
         req["auth"] = {"type": "bearer", "bearer": [{"key": "token", "value": "{{" + auth + "}}", "type": "string"}]}
     else:
         req["auth"] = {"type": "noauth"}
@@ -84,7 +99,10 @@ coleccion = {
         "description": (
             "Colección de pruebas del parcial final de Sistemas Distribuidos.\n\n"
             "Sedes: 1 Sincelejo (PostgreSQL), 2 Cartagena (MongoDB), 3 Corozal (PostgreSQL). "
-            "HSB en {{hsb}}, API y vistas en {{api}}, HAPI FHIR R4 en {{fhir}}.\n\n"
+            "HSB en {{hsb}}, API y vistas en {{api}}, HAPI FHIR R4 por la pasarela {{fhir}}.\n\n"
+            "Seguridad: HTTPS con la CA propia (en Postman: Settings > Certificates > CA certificates = certs/ca.pem; "
+            "con Newman: --ssl-extra-ca-certs certs/ca.pem). El bus exige un token OAuth 2.0: ejecute primero "
+            "la carpeta 0.\n\n"
             "Ejecute las carpetas en orden (Run collection). Los mensajes oficiales del docente vienen de ejemplos/ "
             "sin modificar. Si el sistema ya tenía los ejemplos cargados, el bus responde 'duplicado': las pruebas "
             "lo aceptan porque eso demuestra la idempotencia.\n\n"
@@ -92,11 +110,83 @@ coleccion = {
             "sede, alteración de la auditoría) están en el README y en docs/guion_demostracion.md."),
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     },
-    "variable": [{"key": k, "value": ""} for k in ("token_medico", "token_paciente", "token_admision",
+    "variable": [{"key": k, "value": ""} for k in ("token_hsb", "token_sede1", "token_fhir", "refresh_1", "refresh_2",
+                                                   "token_medico", "token_paciente", "token_admision",
                                                    "token_auditor", "token_admin", "token_admin_sede2",
                                                    "usuario_nuevo")],
     "item": [
-        carpeta("0. Salud y métricas", "GET /health y /metrics de cada servicio (requisito no funcional).", [
+        carpeta("0. OAuth 2.0", "Servidor de autorización de la API (RFC 6749, 7009, 7517, 7662, 8414). "
+                "Pide los tokens que usan las demás carpetas.", [
+            peticion("Metadatos del servidor (RFC 8414)", "GET", "{{api}}/.well-known/oauth-authorization-server",
+                     eventos=pruebas(
+                "const r = pm.response.json();",
+                "pm.test('Flujos password, client_credentials y refresh_token', () =>",
+                "  ['password','client_credentials','refresh_token'].forEach(g => pm.expect(r.grant_types_supported).to.include(g)));",
+                "pm.test('Endpoints de token, JWKS, revocación e introspección', () =>",
+                "  ['token_endpoint','jwks_uri','revocation_endpoint','introspection_endpoint'].forEach(k => pm.expect(r).to.have.property(k)));")),
+            peticion("Clave pública JWKS (RFC 7517)", "GET", "{{api}}/oauth/jwks", eventos=pruebas(
+                "const k = pm.response.json().keys[0];",
+                "pm.test('RSA para RS256', () => { pm.expect(k.kty).to.eql('RSA'); pm.expect(k.alg).to.eql('RS256'); });")),
+            peticion("Token de servicio · client_credentials (herramientas_qa)", "POST", "{{api}}/oauth/token",
+                     form={"grant_type": "client_credentials"}, basic=("herramientas_qa", "{{secreto_qa}}"),
+                     eventos=pruebas(
+                "const r = pm.response.json();",
+                "pm.test('200 Bearer', () => { pm.response.to.have.status(200); pm.expect(r.token_type).to.eql('Bearer'); });",
+                "pm.test('Scopes del bus', () => pm.expect(r.scope.split(' ')).to.include.members(['hsb.ingesta','hsb.admin']));",
+                "pm.test('No se guarda en caché', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+                "pm.collectionVariables.set('token_hsb', r.access_token);")),
+            peticion("Token del sistema de la sede 1 (solo su sede)", "POST", "{{api}}/oauth/token",
+                     form={"grant_type": "client_credentials"}, basic=("sistema_sede1", "{{secreto_sede1}}"),
+                     eventos=pruebas(
+                "const r = pm.response.json();",
+                "pm.test('Solo hsb.ingesta', () => pm.expect(r.scope).to.eql('hsb.ingesta'));",
+                "pm.collectionVariables.set('token_sede1', r.access_token);")),
+            peticion("Token de usuario · password (admin_plataforma)", "POST", "{{api}}/oauth/token",
+                     form={"grant_type": "password", "username": "admin_plataforma", "password": "Admin123!"},
+                     basic=("herramientas_qa", "{{secreto_qa}}"), eventos=pruebas(
+                "const r = pm.response.json();",
+                "pm.test('Access y refresh token', () => { pm.expect(r.access_token).to.be.a('string'); pm.expect(r.refresh_token).to.be.a('string'); });",
+                "pm.test('Scopes del rol administrador', () => pm.expect(r.scope).to.include('panel.admin'));",
+                "pm.collectionVariables.set('token_fhir', r.access_token);",
+                "pm.collectionVariables.set('refresh_1', r.refresh_token);")),
+            peticion("Renovar con refresh_token (rotación)", "POST", "{{api}}/oauth/token",
+                     form={"grant_type": "refresh_token", "refresh_token": "{{refresh_1}}"},
+                     basic=("herramientas_qa", "{{secreto_qa}}"), eventos=pruebas(
+                "const r = pm.response.json();",
+                "pm.test('Nuevo par de tokens', () => { pm.response.to.have.status(200); pm.expect(r.refresh_token).to.not.eql(pm.collectionVariables.get('refresh_1')); });",
+                "pm.collectionVariables.set('token_fhir', r.access_token);",
+                "pm.collectionVariables.set('refresh_2', r.refresh_token);")),
+            peticion("Reusar el refresh_token viejo", "POST", "{{api}}/oauth/token",
+                     form={"grant_type": "refresh_token", "refresh_token": "{{refresh_1}}"},
+                     basic=("herramientas_qa", "{{secreto_qa}}"), eventos=pruebas(
+                "pm.test('400 invalid_grant', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.eql('invalid_grant'); });")),
+            peticion("Introspección del token de servicio (RFC 7662)", "POST", "{{api}}/oauth/introspect",
+                     form={"token": "{{token_hsb}}"}, basic=("herramientas_qa", "{{secreto_qa}}"), eventos=pruebas(
+                "const r = pm.response.json();",
+                "pm.test('Activo, audiencia hsb', () => { pm.expect(r.active).to.eql(true); pm.expect(r.aud).to.include('hsb'); });")),
+            peticion("Revocar el refresh_token (RFC 7009)", "POST", "{{api}}/oauth/revoke",
+                     form={"token": "{{refresh_2}}"}, basic=("herramientas_qa", "{{secreto_qa}}"), eventos=pruebas(
+                "pm.test('200', () => pm.response.to.have.status(200));")),
+            peticion("Introspección del refresh revocado", "POST", "{{api}}/oauth/introspect",
+                     form={"token": "{{refresh_2}}"}, basic=("herramientas_qa", "{{secreto_qa}}"), eventos=pruebas(
+                "pm.test('Inactivo', () => pm.expect(pm.response.json().active).to.eql(false));")),
+            peticion("Secreto de cliente incorrecto", "POST", "{{api}}/oauth/token",
+                     form={"grant_type": "client_credentials"}, basic=("herramientas_qa", "secreto-falso"), eventos=pruebas(
+                "pm.test('401 invalid_client', () => { pm.response.to.have.status(401); pm.expect(pm.response.json().error).to.eql('invalid_client'); });")),
+            peticion("Bus sin token", "POST", "{{hsb}}/hsb/hl7", leer("ejemplos/01_adt_a01_valido_sede2.hl7"), auth=False, eventos=pruebas(
+                "pm.test('401 con WWW-Authenticate: Bearer', () => { pm.response.to.have.status(401);"
+                " pm.expect(pm.response.headers.get('WWW-Authenticate')).to.include('Bearer'); });")),
+            peticion("Bus con token de usuario (audiencia api)", "POST", "{{hsb}}/hsb/hl7",
+                     leer("ejemplos/01_adt_a01_valido_sede2.hl7"), auth="token_fhir", eventos=pruebas(
+                "pm.test('401: el token no es para el bus', () => pm.response.to.have.status(401));")),
+            peticion("Sistema de la sede 1 envía un CSV de la sede 3", "POST", "{{hsb}}/hsb/csv?sede=3",
+                     leer("ejemplos/04_sede3_legado.csv"), tipo="text/csv", auth="token_sede1", eventos=pruebas(
+                "pm.test('403 insufficient_scope', () => { pm.response.to.have.status(403);"
+                " pm.expect(pm.response.json().detail.error).to.eql('insufficient_scope'); });")),
+            peticion("FHIR por la pasarela sin token", "GET", "{{fhir}}/metadata", auth=False, eventos=pruebas(
+                "pm.test('401', () => pm.response.to.have.status(401));")),
+        ]),
+        carpeta("0b. Salud y métricas", "GET /health y /metrics de cada servicio (requisito no funcional).", [
             peticion("HSB /health", "GET", "{{hsb}}/health", eventos=pruebas(
                 "const r = pm.response.json();",
                 "pm.test('200', () => pm.response.to.have.status(200));",
@@ -209,7 +299,7 @@ coleccion = {
                 "  b.entry.forEach(e => pm.expect(e.request.method).to.eql('PUT')); });",
                 "pm.collectionVariables.set('bundle_1001', JSON.stringify(b));")),
             peticion("Validar el Bundle en HAPI ($validate)", "POST", "{{fhir}}/Bundle/$validate", "{{bundle_1001}}",
-                     tipo="application/fhir+json", eventos=pruebas(
+                     tipo="application/fhir+json", auth="token_fhir", eventos=pruebas(
                 "const r = pm.response.json();",
                 "const errores = (r.issue || []).filter(i => ['error','fatal'].includes(i.severity));",
                 "pm.test('0 errores de validación', () => pm.expect(errores).to.have.length(0));")),
@@ -282,15 +372,18 @@ coleccion = {
 
 def entorno(nombre, host):
     return {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, nombre)), "name": nombre, "_postman_variable_scope": "environment",
-            "values": [{"key": "api", "value": f"http://{host}:8000", "enabled": True},
-                       {"key": "hsb", "value": f"http://{host}:8001", "enabled": True},
-                       {"key": "fhir", "value": f"http://{host}:8090/fhir", "enabled": True}]}
+            "values": [{"key": "api", "value": f"https://{host}:8000", "enabled": True},
+                       {"key": "hsb", "value": f"https://{host}:8001", "enabled": True},
+                       {"key": "fhir", "value": f"https://{host}:8000/fhir", "enabled": True},
+                       # Secretos de PRUEBA de los clientes OAuth (los mismos de .env.example)
+                       {"key": "secreto_qa", "value": "qa_secreto_2026", "enabled": True, "type": "secret"},
+                       {"key": "secreto_sede1", "value": "sede1_secreto_2026", "enabled": True, "type": "secret"}]}
 
 
 if __name__ == "__main__":
     salida = {
         "Plataforma_Interoperabilidad.postman_collection.json": coleccion,
-        "entorno_kali.postman_environment.json": entorno("Plataforma · VM Kali (192.168.1.94)", "192.168.1.94"),
+        "entorno_kali.postman_environment.json": entorno("Plataforma · VM Kali (10.10.10.47)", "10.10.10.47"),
         "entorno_local.postman_environment.json": entorno("Plataforma · localhost", "localhost"),
     }
     for nombre, datos in salida.items():

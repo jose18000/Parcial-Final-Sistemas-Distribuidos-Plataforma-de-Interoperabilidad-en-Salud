@@ -2,10 +2,30 @@
   "info": {
     "_postman_id": "ae33387f-0d4d-5b1a-b9ae-67c16271928a",
     "name": "Plataforma de Interoperabilidad Clínica · Red de IPS",
-    "description": "Colección de pruebas del parcial final de Sistemas Distribuidos.\n\nSedes: 1 Sincelejo (PostgreSQL), 2 Cartagena (MongoDB), 3 Corozal (PostgreSQL). HSB en {{hsb}}, API y vistas en {{api}}, HAPI FHIR R4 en {{fhir}}.\n\nEjecute las carpetas en orden (Run collection). Los mensajes oficiales del docente vienen de ejemplos/ sin modificar. Si el sistema ya tenía los ejemplos cargados, el bus responde 'duplicado': las pruebas lo aceptan porque eso demuestra la idempotencia.\n\nPruebas que necesitan apagar contenedores (reintento con HAPI caído, mensaje muerto, caída de una sede, alteración de la auditoría) están en el README y en docs/guion_demostracion.md.",
+    "description": "Colección de pruebas del parcial final de Sistemas Distribuidos.\n\nSedes: 1 Sincelejo (PostgreSQL), 2 Cartagena (MongoDB), 3 Corozal (PostgreSQL). HSB en {{hsb}}, API y vistas en {{api}}, HAPI FHIR R4 por la pasarela {{fhir}}.\n\nSeguridad: HTTPS con la CA propia (en Postman: Settings > Certificates > CA certificates = certs/ca.pem; con Newman: --ssl-extra-ca-certs certs/ca.pem). El bus exige un token OAuth 2.0: ejecute primero la carpeta 0.\n\nEjecute las carpetas en orden (Run collection). Los mensajes oficiales del docente vienen de ejemplos/ sin modificar. Si el sistema ya tenía los ejemplos cargados, el bus responde 'duplicado': las pruebas lo aceptan porque eso demuestra la idempotencia.\n\nPruebas que necesitan apagar contenedores (reintento con HAPI caído, mensaje muerto, caída de una sede, alteración de la auditoría) están en el README y en docs/guion_demostracion.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
+    {
+      "key": "token_hsb",
+      "value": ""
+    },
+    {
+      "key": "token_sede1",
+      "value": ""
+    },
+    {
+      "key": "token_fhir",
+      "value": ""
+    },
+    {
+      "key": "refresh_1",
+      "value": ""
+    },
+    {
+      "key": "refresh_2",
+      "value": ""
+    },
     {
       "key": "token_medico",
       "value": ""
@@ -37,7 +57,668 @@
   ],
   "item": [
     {
-      "name": "0. Salud y métricas",
+      "name": "0. OAuth 2.0",
+      "description": "Servidor de autorización de la API (RFC 6749, 7009, 7517, 7662, 8414). Pide los tokens que usan las demás carpetas.",
+      "item": [
+        {
+          "name": "Metadatos del servidor (RFC 8414)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/.well-known/oauth-authorization-server",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Flujos password, client_credentials y refresh_token', () =>",
+                  "  ['password','client_credentials','refresh_token'].forEach(g => pm.expect(r.grant_types_supported).to.include(g)));",
+                  "pm.test('Endpoints de token, JWKS, revocación e introspección', () =>",
+                  "  ['token_endpoint','jwks_uri','revocation_endpoint','introspection_endpoint'].forEach(k => pm.expect(r).to.have.property(k)));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Clave pública JWKS (RFC 7517)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api}}/oauth/jwks",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const k = pm.response.json().keys[0];",
+                  "pm.test('RSA para RS256', () => { pm.expect(k.kty).to.eql('RSA'); pm.expect(k.alg).to.eql('RS256'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Token de servicio · client_credentials (herramientas_qa)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/oauth/token",
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "herramientas_qa",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{secreto_qa}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('200 Bearer', () => { pm.response.to.have.status(200); pm.expect(r.token_type).to.eql('Bearer'); });",
+                  "pm.test('Scopes del bus', () => pm.expect(r.scope.split(' ')).to.include.members(['hsb.ingesta','hsb.admin']));",
+                  "pm.test('No se guarda en caché', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+                  "pm.collectionVariables.set('token_hsb', r.access_token);"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Token del sistema de la sede 1 (solo su sede)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/oauth/token",
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "sistema_sede1",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{secreto_sede1}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Solo hsb.ingesta', () => pm.expect(r.scope).to.eql('hsb.ingesta'));",
+                  "pm.collectionVariables.set('token_sede1', r.access_token);"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Token de usuario · password (admin_plataforma)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/oauth/token",
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "username",
+                  "value": "admin_plataforma"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin123!"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "herramientas_qa",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{secreto_qa}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Access y refresh token', () => { pm.expect(r.access_token).to.be.a('string'); pm.expect(r.refresh_token).to.be.a('string'); });",
+                  "pm.test('Scopes del rol administrador', () => pm.expect(r.scope).to.include('panel.admin'));",
+                  "pm.collectionVariables.set('token_fhir', r.access_token);",
+                  "pm.collectionVariables.set('refresh_1', r.refresh_token);"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Renovar con refresh_token (rotación)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/oauth/token",
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "refresh_token"
+                },
+                {
+                  "key": "refresh_token",
+                  "value": "{{refresh_1}}"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "herramientas_qa",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{secreto_qa}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Nuevo par de tokens', () => { pm.response.to.have.status(200); pm.expect(r.refresh_token).to.not.eql(pm.collectionVariables.get('refresh_1')); });",
+                  "pm.collectionVariables.set('token_fhir', r.access_token);",
+                  "pm.collectionVariables.set('refresh_2', r.refresh_token);"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Reusar el refresh_token viejo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/oauth/token",
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "refresh_token"
+                },
+                {
+                  "key": "refresh_token",
+                  "value": "{{refresh_1}}"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "herramientas_qa",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{secreto_qa}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 invalid_grant', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.eql('invalid_grant'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Introspección del token de servicio (RFC 7662)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/oauth/introspect",
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "herramientas_qa",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{secreto_qa}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Activo, audiencia hsb', () => { pm.expect(r.active).to.eql(true); pm.expect(r.aud).to.include('hsb'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Revocar el refresh_token (RFC 7009)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/oauth/revoke",
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "token",
+                  "value": "{{refresh_2}}"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "herramientas_qa",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{secreto_qa}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Introspección del refresh revocado",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/oauth/introspect",
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "token",
+                  "value": "{{refresh_2}}"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "herramientas_qa",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{secreto_qa}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Inactivo', () => pm.expect(pm.response.json().active).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Secreto de cliente incorrecto",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api}}/oauth/token",
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "herramientas_qa",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "secreto-falso",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 invalid_client', () => { pm.response.to.have.status(401); pm.expect(pm.response.json().error).to.eql('invalid_client'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Bus sin token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{hsb}}/hsb/hl7",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "MSH|^~\\&|HIS_SEDE2|SEDE2|HSB|CENTRAL|20261107101500||ADT^A01|MSG-0001|P|2.5\rPID|1||1007^^^HIS||Rojas^Andrea||19900214|F\rPV1|1|O|||||MED-02^Ruiz^Mateo||||||||||||V-S2-0101|||||||||||||||||||||||||202611071015\rDG1|1||J45.9^Asma^I10||20261107|A\r"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 con WWW-Authenticate: Bearer', () => { pm.response.to.have.status(401); pm.expect(pm.response.headers.get('WWW-Authenticate')).to.include('Bearer'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Bus con token de usuario (audiencia api)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": "{{hsb}}/hsb/hl7",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "MSH|^~\\&|HIS_SEDE2|SEDE2|HSB|CENTRAL|20261107101500||ADT^A01|MSG-0001|P|2.5\rPID|1||1007^^^HIS||Rojas^Andrea||19900214|F\rPV1|1|O|||||MED-02^Ruiz^Mateo||||||||||||V-S2-0101|||||||||||||||||||||||||202611071015\rDG1|1||J45.9^Asma^I10||20261107|A\r"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_fhir}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401: el token no es para el bus', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Sistema de la sede 1 envía un CSV de la sede 3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/csv"
+              }
+            ],
+            "url": "{{hsb}}/hsb/csv?sede=3",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "documento;nombre;sexo;nacimiento;dx_local;fecha;triage;profesional\n1008;Camila Suarez Pineda;F;1996-02-10;DIARREA;2026-11-07T08:30;3;MED-01\n1009;Ricardo Mendoza Lara;M;1971-07-19;HIPERTENSION;2026-11-07T09:10;;MED-02\n1010;Sofia Blanco Mesa;F;2004-12-01;ASMA;2026-11-07T09:45;4;MED-01\n1011;Tomas Ortiz Vega;M;1988-05-23;DOLOR MISTERIOSO;2026-11-07T10:05;2;MED-02\n12;Nombre Corto;M;1990-01-01;CEFALEA;2026-11-07T10:30;;MED-01\n"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_sede1}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 insufficient_scope', () => { pm.response.to.have.status(403); pm.expect(pm.response.json().detail.error).to.eql('insufficient_scope'); });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "FHIR por la pasarela sin token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{fhir}}/metadata",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "0b. Salud y métricas",
       "description": "GET /health y /metrics de cada servicio (requisito no funcional).",
       "item": [
         {
@@ -161,7 +842,14 @@
             "url": "{{fhir}}/metadata",
             "description": "",
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_fhir}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -202,7 +890,14 @@
               "raw": "MSH|^~\\&|HIS_SEDE2|SEDE2|HSB|CENTRAL|20261107101500||ADT^A01|MSG-0001|P|2.5\rPID|1||1007^^^HIS||Rojas^Andrea||19900214|F\rPV1|1|O|||||MED-02^Ruiz^Mateo||||||||||||V-S2-0101|||||||||||||||||||||||||202611071015\rDG1|1||J45.9^Asma^I10||20261107|A\r"
             },
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -239,7 +934,14 @@
               "raw": "MSH|^~\\&|HIS_SEDE2|SEDE2|HSB|CENTRAL|20261107101500||ADT^A01|MSG-0001|P|2.5\rPID|1||1007^^^HIS||Rojas^Andrea||19900214|F\rPV1|1|O|||||MED-02^Ruiz^Mateo||||||||||||V-S2-0101|||||||||||||||||||||||||202611071015\rDG1|1||J45.9^Asma^I10||20261107|A\r"
             },
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -275,7 +977,14 @@
               "raw": "MSH|^~\\&|HIS_SEDE1|SEDE1|HSB|CENTRAL|20261107113000||ORU^R01|MSG-0002|P|2.5\rPID|1||1001^^^HIS||Perez^Carlos||19800412|M\rPV1|1|E|||||MED-01^Vega^Laura||||||||||||V-S1-0150|||||||||||||||||||||||||202611071100\rOBR|1|||718-7^Hemoglobina^LN\rOBX|1|NM|718-7^Hemoglobina^LN||13.8|g/dL|||||F\r"
             },
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -311,7 +1020,14 @@
               "raw": "MSH|^~\\&|HIS_SEDE3|SEDE3|HSB|CENTRAL|20261107120000||ADT^A01|MSG-0003|P|2.5\rPID|1||ABC123^^^HIS||Lora^Pedro||19851130|X\rPV1|1|O|||||MED-01^Vega^Laura||||||||||||V-S3-0200|||||||||||||||||||||||||202611071200\rDG1|1||DIARREA^Diarrea^L||20261107|A\r"
             },
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -350,7 +1066,14 @@
               "raw": "documento;nombre;sexo;nacimiento;dx_local;fecha;triage;profesional\n1008;Camila Suarez Pineda;F;1996-02-10;DIARREA;2026-11-07T08:30;3;MED-01\n1009;Ricardo Mendoza Lara;M;1971-07-19;HIPERTENSION;2026-11-07T09:10;;MED-02\n1010;Sofia Blanco Mesa;F;2004-12-01;ASMA;2026-11-07T09:45;4;MED-01\n1011;Tomas Ortiz Vega;M;1988-05-23;DOLOR MISTERIOSO;2026-11-07T10:05;2;MED-02\n12;Nombre Corto;M;1990-01-01;CEFALEA;2026-11-07T10:30;;MED-01\n"
             },
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -397,7 +1120,14 @@
               "raw": "MSH|^~\\&|HIS_SEDE1|SEDE1|HSB|CENTRAL|20261108090000||ADT^A03|MSG-0057|P|2.5\rPID|1||1020^^^HIS^CC||Martinez Ruiz^Lucia Fernanda||19880315|F|||Calle 10 # 5-20^^Sincelejo^^^CO^^^70001||3005550101^^^lucia.martinez@correo.test|||||||||05||||||CO\rNK1|1|Martinez^Jorge|PAR||3005550102\rPV1|1|E|||||MED-01^Vega^Laura|||||||02|||||V-S1-0157|||||||||||||||||01||||||||202611080900|202611081730\rPV2|||^Dolor torácico opresivo de inicio súbito\rIN1|1|||Nueva EPS\rZPI|02|Enfermera|N|08||Zenú|01\rZPV|01|202611080905|2\rDG1|1||I20.9^Angina de pecho, no especificada^I10||20261108|A|||||||||1\rDG1|2||I20.9^Angina de pecho, no especificada^I10||20261108|F|||||||||1\rDG1|3||I10^Hipertensión esencial^I10||20261108|F|||||||||2\rDG1|4||E11.9^Diabetes mellitus tipo 2^I10||20261108|F|||||||||3\rDG1|5||E78.5^Hiperlipidemia, no especificada^I10||20261108|F|||||||||4\rORC|NW|||||||||||MED-01\rRXE|^Cada 24 horas^D30|^Ácido acetilsalicílico 100 mg tableta|100||mg|||||30\rRXR|PO\rZRX|04\rAL1|1|DA|^Penicilina\rZEG||01|3|0|Padre con infarto agudo de miocardio a los 55 años|Turnos nocturnos y estrés laboral|Dra. Laura Vega\r"
             },
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -435,7 +1165,14 @@
               "raw": "{\n  \"tipo_mensaje\": \"PRUEBA_POSTMAN\",\n  \"registro\": {\n    \"1\": \"CC\",\n    \"2\": \"{{doc_json}}\",\n    \"3\": \"CO\",\n    \"4\": \"Lucía Pérez Gómez\",\n    \"5\": \"1990-05-17\",\n    \"8\": \"F\",\n    \"13\": \"CO\",\n    \"14\": \"13001\",\n    \"16\": \"Coosalud EPS\",\n    \"17\": \"2026-11-11T09:30\",\n    \"18\": \"01\",\n    \"19\": \"01\",\n    \"20\": \"01\",\n    \"21\": \"Dolor abdominal\",\n    \"23\": \"3\",\n    \"34\": \"K29.7\",\n    \"51\": \"01\",\n    \"52\": \"Calle 30 # 10-20, Cartagena\",\n    \"53\": \"3001234567\"\n  }\n}"
             },
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -507,7 +1244,14 @@
             "url": "{{hsb}}/hsb/mensajes?limite=20",
             "description": "",
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -535,7 +1279,14 @@
             "url": "{{hsb}}/hsb/mensajes?estado=RECHAZADO",
             "description": "",
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -562,7 +1313,14 @@
             "url": "{{hsb}}/hsb/reencolar/MSG-0001",
             "description": "",
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_hsb}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -987,7 +1745,14 @@
               "raw": "{{bundle_1001}}"
             },
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_fhir}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -1015,7 +1780,14 @@
             "url": "{{fhir}}/Patient?identifier=1007&_summary=count",
             "description": "",
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_fhir}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
@@ -1041,7 +1813,14 @@
             "url": "{{fhir}}/Observation/obs-V-S1-0150-718-7",
             "description": "",
             "auth": {
-              "type": "noauth"
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_fhir}}",
+                  "type": "string"
+                }
+              ]
             }
           },
           "event": [
