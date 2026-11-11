@@ -10,7 +10,9 @@ Ver la historia de otro pac.   | No       | No           | Sí     | Sí (rep)
 Abrir una atención             | No       | Sí           | No     | No
 Registrar diagnóstico o egreso | No       | No           | Sí     | No
 Ver el estado de la plataforma | No       | No           | Sí     | Sí
-Apagar / encender nodo (demo)  | No       | No           | No     | Sí
+Verificar la auditoría (API)   | No       | No           | Sí     | Sí
+Simular alteración (demo)      | No       | No           | No     | Sí
+(Apagar o encender una sede en la demo se hace con docker stop/start, fuera de la API.)
 """
 
 from typing import List, Optional, Dict, Any
@@ -57,6 +59,9 @@ def requerir_roles(roles_permitidos: List[str]):
     def _verificar(usuario: Dict[str, Any] = Depends(obtener_usuario_autenticado), request: Request = None):
         rol = usuario.get("rol")
         username = usuario.get("username", "desconocido")
+        if usuario.get("debe_cambiar_clave"):
+            # Contraseña temporal: no puede usar el sistema hasta cambiarla
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CAMBIO_CLAVE_REQUERIDO")
 
         if rol not in roles_permitidos:
             recurso = request.url.path if request else "recurso_protegido"
@@ -84,6 +89,8 @@ def validar_acceso_historia_clinica(documento_objetivo: str, usuario: Dict[str, 
     - Médico y Auditor: Acceso permitido.
     - Admisionista: DENEGADO (principio de mínimo privilegio).
     """
+    if usuario.get("debe_cambiar_clave"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CAMBIO_CLAVE_REQUERIDO")
     rol = usuario.get("rol")
     doc_usuario = str(usuario.get("documento_id", "")).strip()
     doc_target = str(documento_objetivo).strip()
@@ -108,8 +115,8 @@ def validar_acceso_historia_clinica(documento_objetivo: str, usuario: Dict[str, 
                 detail="Acceso denegado: Un paciente sólo puede consultar su propia historia clínica."
             )
 
-    # Regla Médico y Auditor
-    if rol in ("medico", "auditor"):
+    # Regla Médico, Auditor y Administrador de la plataforma
+    if rol in ("medico", "auditor", "administrador"):
         return True
 
     # Regla Admisionista
