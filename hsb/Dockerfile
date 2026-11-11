@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir -r /app/hsb/requirements.txt
 # Copiar módulos del proyecto necesarios para el HSB
 COPY hsb /app/hsb
 COPY fhir /app/fhir
+COPY traductor /app/traductor
+COPY db /app/db
 COPY ejemplos /app/ejemplos
 
 ENV PYTHONPATH=/app
