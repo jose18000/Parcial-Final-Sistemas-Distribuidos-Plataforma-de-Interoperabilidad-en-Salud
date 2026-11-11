@@ -1,133 +1,82 @@
 """
 app/dashboard.py
-Recolector de Métricas del Tablero de Estado de la Plataforma.
-
-Consolida:
-1. Disponibilidad de los nodos PostgreSQL de cada sede
-2. Cobertura de recursos FHIR por sede (%)
-3. Métricas del Health Service Bus (mensajes por estado, latencia)
-4. Resultado del verificador de auditoría encadenada
+Tablero de estado (pestaña del Reporte de HC, guía Fase 4 paso 4):
+  1. Nodos disponibles y su motor (PostgreSQL / MongoDB)
+  2. Cobertura FHIR por sede (% de pacientes enlazados a un Patient en HAPI)
+  3. Métricas del HSB (mensajes por estado, latencia, % fallidos, duplicados)
+  4. Resultado del verificador de la auditoría encadenada
 """
 
 import os
+import time
+from typing import Any, Dict
+
 import httpx
-from typing import Dict, Any, List
 
-from app.audit import verificar_cadena_auditoria, _CADENA_AUDITORIA
-from db.consulta_unificada import CONFIG_NODOS, PSYCOPG_AVAILABLE
-
-if PSYCOPG_AVAILABLE:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
+from app.audit import estado_auditoria
+from db.repositorio import todos_los_repositorios
 
 HSB_METRICS_URL = os.getenv("HSB_METRICS_URL", "http://localhost:8001/metrics")
+HAPI_FHIR_URL = os.getenv("HAPI_FHIR_URL", "http://localhost:8090/fhir")
 
 
-def obtener_cobertura_fhir_por_sede() -> Dict[str, Any]:
-    """Calcula el porcentaje de pacientes con fhir_patient_id no nulo en cada sede."""
-    cobertura = {}
+def _estado_sede(repo) -> Dict[str, Any]:
+    t0 = time.time()
+    try:
+        cob = repo.cobertura_fhir()
+        total, con = cob["total_pacientes"], cob["pacientes_con_fhir"]
+        return {"sede_id": repo.sede_id, "nombre": repo.nombre, "motor": repo.motor, "disponible": True,
+                "total_pacientes": total, "pacientes_con_fhir": con,
+                "porcentaje_cobertura": round(con / total * 100, 1) if total else 0.0,
+                "latencia_ms": round((time.time() - t0) * 1000, 1)}
+    except Exception as e:
+        return {"sede_id": repo.sede_id, "nombre": repo.nombre, "motor": repo.motor, "disponible": False,
+                "total_pacientes": 0, "pacientes_con_fhir": 0, "porcentaje_cobertura": 0.0,
+                "error": "La base de datos de la sede no responde"
+                         if "not known" in str(e) or "timed out" in str(e).lower() or "refused" in str(e)
+                         else (str(e).splitlines()[0][:120] if str(e) else e.__class__.__name__)}
 
-    for nodo in CONFIG_NODOS:
-        sede_id = nodo["sede_id"]
-        nombre = nodo["nombre"]
 
-        if not PSYCOPG_AVAILABLE:
-            cobertura[f"sede_{sede_id}"] = {
-                "nombre": nombre,
-                "disponible": False,
-                "total_pacientes": 0,
-                "pacientes_con_fhir": 0,
-                "porcentaje_cobertura": 0.0
-            }
-            continue
-
-        conn = None
-        try:
-            conn = psycopg2.connect(
-                host=nodo["host"],
-                port=nodo["port"],
-                dbname=nodo["database"],
-                user=nodo["user"],
-                password=nodo["password"],
-                connect_timeout=2
-            )
-            with conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM usuario")
-                total = cur.fetchone()[0]
-
-                cur.execute("SELECT COUNT(*) FROM usuario WHERE fhir_patient_id IS NOT NULL")
-                con_fhir = cur.fetchone()[0]
-
-                pct = (con_fhir / total * 100.0) if total > 0 else 0.0
-                cobertura[f"sede_{sede_id}"] = {
-                    "nombre": nombre,
-                    "disponible": True,
-                    "total_pacientes": total,
-                    "pacientes_con_fhir": con_fhir,
-                    "porcentaje_cobertura": round(pct, 1)
-                }
-        except Exception:
-            cobertura[f"sede_{sede_id}"] = {
-                "nombre": nombre,
-                "disponible": False,
-                "total_pacientes": 0,
-                "pacientes_con_fhir": 0,
-                "porcentaje_cobertura": 0.0
-            }
-        finally:
-            if conn:
-                conn.close()
-
-    return cobertura
+def estado_sedes() -> Dict[str, Any]:
+    """Las 3 sedes se consultan en paralelo: una sede caída cuesta su timeout una sola vez."""
+    from concurrent.futures import ThreadPoolExecutor
+    repos = todos_los_repositorios()
+    with ThreadPoolExecutor(max_workers=len(repos)) as pool:
+        return {f"sede_{r['sede_id']}": r for r in pool.map(_estado_sede, repos)}
 
 
 def obtener_metricas_bus() -> Dict[str, Any]:
-    """Consulta las métricas en tiempo real expuestas por el HSB."""
     try:
-        with httpx.Client(timeout=2.0) as client:
-            resp = client.get(HSB_METRICS_URL)
-            if resp.status_code == 200:
-                return resp.json()
+        resp = httpx.get(HSB_METRICS_URL, timeout=8.0)
+        if resp.status_code == 200:
+            datos = resp.json()
+            datos["estado_general"] = datos.get("estado_general", "SALUDABLE")
+            return datos
     except Exception:
         pass
+    return {"total_recibidos": 0, "total_entregados": 0, "total_rechazados": 0, "total_duplicados_detectados": 0,
+            "total_mensajes_muertos": 0, "latencia_media_ms": 0.0, "porcentaje_fallidos": 0.0,
+            "mensajes_ultimo_minuto": 0, "mensajes_por_estado_persistidos": {},
+            "total_reintentos_ejecutados": 0, "pendientes_en_cola_reintentos": 0,
+            "estado_general": "HSB NO DISPONIBLE"}
 
-    return {
-        "total_recibidos": 0,
-        "total_entregados": 0,
-        "total_rechazados": 0,
-        "total_duplicados_detectados": 0,
-        "total_mensajes_muertos": 0,
-        "latencia_media_ms": 0.0,
-        "porcentaje_fallidos": 0.0,
-        "estado_general": "DESCONOCIDO_O_INACTIVO"
-    }
+
+def hapi_disponible() -> bool:
+    try:
+        return httpx.get(f"{HAPI_FHIR_URL}/metadata", timeout=3.0).status_code == 200
+    except Exception:
+        return False
 
 
 def obtener_estado_general_plataforma() -> Dict[str, Any]:
-    """Consolida el estado integral para el tablero de mando."""
-    # 1. Cobertura FHIR y estado de nodos
-    cobertura = obtener_cobertura_fhir_por_sede()
-    nodos_activos = sum(1 for s in cobertura.values() if s.get("disponible"))
-
-    # 2. Métricas del Bus
-    metricas_bus = obtener_metricas_bus()
-
-    # 3. Verificación de Auditoría Encadenada
-    es_integra, fallo = verificar_cadena_auditoria()
-    auditoria_status = {
-        "cadena_integra": es_integra,
-        "total_eventos_registrados": len(_CADENA_AUDITORIA),
-        "estado_verificador": "INTEGRA (Sin alteraciones)" if es_integra else "¡ALERTA! ALTERACIÓN DETECTADA",
-        "detalle_alteracion": fallo
-    }
-
+    sedes = estado_sedes()
+    activos = sum(1 for s in sedes.values() if s["disponible"])
+    total_pac = sum(s["total_pacientes"] for s in sedes.values())
+    total_fhir = sum(s["pacientes_con_fhir"] for s in sedes.values())
     return {
-        "nodos": {
-            "total": len(CONFIG_NODOS),
-            "activos": nodos_activos,
-            "detalles": cobertura
-        },
-        "bus": metricas_bus,
-        "auditoria": auditoria_status
+        "nodos": {"total": len(sedes), "activos": activos, "detalles": sedes},
+        "cobertura_fhir_global": round(total_fhir / total_pac * 100, 1) if total_pac else 0.0,
+        "hapi_fhir": "UP" if hapi_disponible() else "DOWN",
+        "bus": obtener_metricas_bus(),
+        "auditoria": estado_auditoria(),
     }
-

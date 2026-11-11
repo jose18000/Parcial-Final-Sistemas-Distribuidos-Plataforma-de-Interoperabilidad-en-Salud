@@ -17,6 +17,8 @@ RUN pip install --no-cache-dir -r /app/app/requirements.txt
 COPY app /app/app
 COPY db /app/db
 COPY fhir /app/fhir
+COPY traductor /app/traductor
+COPY ejemplos /app/ejemplos
 
 ENV PYTHONPATH=/app
 EXPOSE 8000

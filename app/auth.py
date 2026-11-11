@@ -53,6 +53,15 @@ USUARIOS_PRUEBA = {
         "nombre_completo": "Dra. Elena Gomez",
         "documento_id": "AUD-01",
         "sede_id": None
+    },
+    # Rol adicional (fuera de la matriz mínima de la guía): opera el Panel de administración.
+    "admin_plataforma": {
+        "username": "admin_plataforma",
+        "password_hash": _hash_pass("Admin123!"),
+        "rol": "administrador",
+        "nombre_completo": "Administrador de la plataforma",
+        "documento_id": "ADMIN-01",
+        "sede_id": None
     }
 }
 
@@ -62,12 +71,12 @@ def verificar_password(plain_password: str, password_hash: str) -> bool:
 
 
 def autenticar_usuario(username: str, password: str) -> Optional[Dict[str, Any]]:
-    usr = USUARIOS_PRUEBA.get(username)
-    if not usr:
-        return None
-    if not verificar_password(password, usr["password_hash"]):
-        return None
-    return usr
+    """
+    Las cuentas viven en la base central (app/usuarios.py, PBKDF2). USUARIOS_PRUEBA solo
+    documenta las cuentas iniciales; la semilla real está en app.usuarios.SEMILLA.
+    """
+    from app import usuarios
+    return usuarios.autenticar(username, password)
 
 
 def crear_token_jwt(datos: Dict[str, Any], expira_minutos: int = JWT_EXPIRE_MINUTES) -> str:
