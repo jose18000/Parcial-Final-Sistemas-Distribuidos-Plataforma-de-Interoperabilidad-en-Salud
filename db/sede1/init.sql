@@ -1,53 +1,62 @@
 -- db/sede1/init.sql
--- Inicialización Sede 1: Sincelejo (pg_sede1 :5433)
+-- Sede 1 · Sincelejo · PostgreSQL (pg_sede1)
+-- Datos 100 % sintéticos. fhir_patient_id en NULL: la cobertura FHIR arranca en 0 %.
 
 \i /docker-entrypoint-initdb.d/00_schema.sql
 
--- 1. Sede (catálogo completo de sedes)
-INSERT INTO sede (sede_id, nombre, ciudad, activa)
-VALUES
-    (1, 'IPS Sincelejo Central',     'Sincelejo', TRUE),
-    (2, 'IPS Cartagena Bocagrande',  'Cartagena', TRUE),
-    (3, 'IPS Corozal La Perla',      'Corozal',   TRUE)
+INSERT INTO sede (sede_id, nombre, ciudad, codigo_prestador, motor) VALUES
+    (1, 'IPS Sincelejo Central',    'Sincelejo', '700010000101', 'postgresql'),
+    (2, 'IPS Cartagena Bocagrande', 'Cartagena', '130010000202', 'mongodb'),
+    (3, 'IPS Corozal La Perla',     'Corozal',   '702150000303', 'postgresql')
 ON CONFLICT (sede_id) DO NOTHING;
 
--- 2. Profesionales de Sede 1
-INSERT INTO profesional_salud (codigo, nombre_completo, especialidad, registro_medico, sede_id)
-VALUES 
-    ('MED-01', 'Dra. Laura Vega', 'Medicina General', 'RM-10492-SIN', 1),
-    ('MED-04', 'Dr. Alfonso Bermejo', 'Medicina Interna', 'RM-11204-SIN', 1)
+INSERT INTO profesional_salud (codigo, nombre_completo, especialidad, registro_medico, sede_id) VALUES
+    ('MED-01', 'Dra. Laura Vega',     'Medicina general', 'RM-10492-SIN', 1),
+    ('MED-04', 'Dr. Alfonso Bermejo', 'Medicina interna', 'RM-11204-SIN', 1)
 ON CONFLICT (codigo) DO NOTHING;
 
--- 3. Pacientes sintéticos
--- NOTA CRÍTICA: fhir_patient_id es NULL (cobertura FHIR arranca en 0%)
--- Paciente 1001 (Carlos Perez) TIENE REGISTROS EN LAS 3 SEDES (requisito RF4/Paso 3)
-INSERT INTO usuario (documento_id, tipo_documento, nombre_completo, fecha_nacimiento, sexo, direccion, telefono, fhir_patient_id, sede_origen_id)
-VALUES 
-    ('1001', 'CC', 'Carlos Perez', '1980-04-12', 'M', 'Calle 22 # 14-30, Sincelejo', '3001234567', NULL, 1),
-    ('1002', 'CC', 'Maria Fernandez Diaz', '1992-09-25', 'F', 'Carrera 19 # 25-10, Sincelejo', '3109876543', NULL, 1)
+-- Paciente 1001 (Carlos Perez) tiene atenciones en las 3 sedes (requisito RF4)
+INSERT INTO usuario (documento_id, tipo_documento, pais_nacionalidad, nombre_completo, apellidos, nombres,
+    fecha_nacimiento, edad, unidad_edad, sexo, genero, ocupacion, voluntad_anticipada, categoria_discapacidad,
+    pais_residencia, municipio_residencia, etnia, zona_residencia, direccion_residencia, telefono,
+    correo_electronico, nombre_responsable, parentesco_responsable, telefono_responsable,
+    fhir_patient_id, sede_origen_id) VALUES
+    ('1001', 'CC', 'CO', 'Carlos Perez', 'Perez', 'Carlos', '1980-04-12', 46, '1', 'M', '01', 'Docente',
+     FALSE, '08', 'CO', '70001', '06', '01', 'Calle 22 # 14-30, Sincelejo', '3001234567',
+     'carlos.perez@correo.test', 'Ana Perez', '03', '3007654321', NULL, 1),
+    ('1002', 'CC', 'CO', 'Maria Fernandez Diaz', 'Fernandez Diaz', 'Maria', '1992-09-25', 34, '1', 'F', '02',
+     'Contadora', FALSE, '08', 'CO', '70001', '06', '01', 'Carrera 19 # 25-10, Sincelejo', '3109876543',
+     NULL, NULL, NULL, NULL, NULL, 1)
 ON CONFLICT (documento_id) DO NOTHING;
 
--- 4. Atenciones en Sede 1
-INSERT INTO atencion (numero_visita, clase_atencion, fecha_ingreso, fecha_egreso, triage, estado, fhir_encounter_id, documento_id, sede_id, codigo_profesional)
-VALUES 
-    ('V-S1-0150', 'E', '2026-11-07 11:00:00', '2026-11-07 15:30:00', 2, 'FINALIZADA', NULL, '1001', 1, 'MED-01'),
-    ('V-S1-0151', 'O', '2026-10-15 08:30:00', '2026-10-15 09:15:00', 4, 'FINALIZADA', NULL, '1002', 1, 'MED-04')
+INSERT INTO atencion (numero_visita, documento_id, sede_id, entidad_salud, fecha_ingreso, modalidad_entrega,
+    entorno_atencion, via_ingreso, causa_atencion, fecha_triage, clasificacion_triage, clase_atencion,
+    codigo_profesional, estado) VALUES
+    ('V-S1-0150', '1001', 1, 'Nueva EPS', '2026-11-07 11:00:00', '01', '01', '01',
+     'Cefalea intensa y cifras tensionales elevadas', '2026-11-07 11:05:00', '2', 'E', 'MED-01', 'FINALIZADA'),
+    ('V-S1-0151', '1002', 1, 'Sanitas EPS', '2026-10-15 08:30:00', '01', '02', '01',
+     'Control de cefalea recurrente', NULL, NULL, 'O', 'MED-04', 'FINALIZADA')
 ON CONFLICT (numero_visita) DO NOTHING;
 
--- 5. Diagnósticos
-INSERT INTO diagnostico (cie10_codigo, descripcion_cie10, tipo, fecha_diagnostico, fhir_condition_id, numero_visita)
-VALUES 
-    ('I10', 'Hipertensión esencial', 'PRINCIPAL', '2026-11-07', NULL, 'V-S1-0150'),
-    ('R51', 'Cefalea', 'RELACIONADO', '2026-10-15', NULL, 'V-S1-0151');
+INSERT INTO diagnostico (diagnostico_id, numero_visita, cie10_codigo, descripcion_cie10, rol, tipo_diagnostico, orden, fecha_diagnostico) VALUES
+    ('cond-V-S1-0150-ing-I10', 'V-S1-0150', 'I10', 'Hipertensión esencial', 'INGRESO', '01', 1, '2026-11-07'),
+    ('cond-V-S1-0150-egr-I10', 'V-S1-0150', 'I10', 'Hipertensión esencial', 'EGRESO',  '01', 1, '2026-11-07'),
+    ('cond-V-S1-0150-rel-R51', 'V-S1-0150', 'R51', 'Cefalea',               'RELACIONADO', '02', 1, '2026-11-07'),
+    ('cond-V-S1-0151-ing-R51', 'V-S1-0151', 'R51', 'Cefalea',               'INGRESO', '01', 1, '2026-10-15')
+ON CONFLICT (diagnostico_id) DO NOTHING;
 
--- 6. Tecnologías en salud / Observaciones
-INSERT INTO tecnologia_salud (loinc_codigo, descripcion_loinc, valor, unidad, fecha_toma, tipo, fhir_observation_id, numero_visita)
-VALUES 
-    ('718-7', 'Hemoglobina [Masa/volumen] en sangre', 13.80, 'g/dL', '2026-11-07 11:30:00', 'LABORATORIO', NULL, 'V-S1-0150'),
-    ('8480-6', 'Presión arterial sistólica', 145.00, 'mm[Hg]', '2026-11-07 11:15:00', 'SIGNO_VITAL', NULL, 'V-S1-0150');
+INSERT INTO tecnologia_salud (tecnologia_id, numero_visita, tipo, loinc_codigo, descripcion_loinc, valor, unidad, fecha_toma) VALUES
+    ('obs-V-S1-0150-8480-6', 'V-S1-0150', 'LABORATORIO', '8480-6', 'Presión arterial sistólica', 145.00, 'mm[Hg]', '2026-11-07 11:15:00')
+ON CONFLICT (tecnologia_id) DO NOTHING;
 
--- 7. Egreso
-INSERT INTO egreso (fecha_egreso, motivo_egreso, condicion_salida, destino_post_egreso, sello_hash, numero_visita)
-VALUES 
-    ('2026-11-07 15:30:00', 'Mejoria clinica', 'ESTABLE', 'DOMICILIO', 'a6b4f7e2d9c1048e91f03bb748a12e847c10d32f5891ac37de41b98a02c3d561', 'V-S1-0150');
+INSERT INTO tecnologia_salud (tecnologia_id, numero_visita, tipo, descripcion_medicamento, dosis, via_administracion,
+    frecuencia, dias_tratamiento, unidades_aplicadas, id_personal_salud, finalidad_tecnologia) VALUES
+    ('med-V-S1-0150-losartan', 'V-S1-0150', 'MEDICAMENTO', 'Losartán 50 mg tableta', '50 mg', '01',
+     'Cada 12 horas', 30, 60, 'MED-01', '01')
+ON CONFLICT (tecnologia_id) DO NOTHING;
 
+INSERT INTO egreso (numero_visita, fecha_salida, condicion_salida, codigo_prestador, tipo_incapacidad,
+    dias_incapacidad, alergias, antecedentes_familiares, riesgos_ocupacionales, responsable_egreso) VALUES
+    ('V-S1-0150', '2026-11-07 15:30:00', '01', '700010000101', '01', 2, 'Penicilina',
+     'Padre con hipertensión arterial', 'Uso prolongado de la voz', 'Dra. Laura Vega')
+ON CONFLICT (numero_visita) DO NOTHING;
