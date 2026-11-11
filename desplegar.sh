@@ -4,11 +4,12 @@
 #  Red de IPS Sincelejo · Cartagena · Corozal
 #
 #  Deja el sistema funcionando en un Linux con apt (Kali, Debian, Ubuntu):
-#    1. Instala Docker y Docker Compose si faltan.
-#    2. Crea el .env (secreto JWT aleatorio) y elige puertos libres si alguno está ocupado.
-#    3. Construye y levanta: pg_sede1 (PostgreSQL), mongo_sede2 (MongoDB), pg_sede3 (PostgreSQL),
-#       pg_central (auditoría, cuentas y base de HAPI), HAPI FHIR R4, HSB y API.
-#    4. Espera a que todo esté sano (las bases se crean e inicializan solas con db/).
+#    1. Instala Docker, Docker Compose y openssl si faltan.
+#    2. Crea el .env (contraseñas aleatorias para los roles de las bases) y elige puertos libres.
+#    3. Seguridad: genera la CA propia y los certificados TLS de cada servidor (certs/),
+#       levanta las bases y les aplica los roles de mínimo privilegio (db/seguridad/).
+#    4. Construye y levanta HAPI FHIR R4 (HTTPS), el HSB (HTTPS + OAuth 2.0) y la API (HTTPS,
+#       servidor OAuth 2.0) y espera a que todo esté sano.
 #    5. Opcional: carga los mensajes del docente y datos sintéticos, y los publica en FHIR.
 #    6. Opcional: corre la verificación de interoperabilidad sede por sede.
 #
@@ -57,7 +58,7 @@ instalar_docker() {
   paso "Instalando Docker (requiere sudo)"
   command -v apt-get >/dev/null || { error "Este script instala con apt. Instale Docker manualmente: https://docs.docker.com/engine/install/"; exit 1; }
   $SUDO apt-get update -qq
-  $SUDO apt-get install -y -qq docker.io curl python3 >/dev/null
+  $SUDO apt-get install -y -qq docker.io curl python3 openssl >/dev/null
   $SUDO systemctl enable --now docker >/dev/null 2>&1 || $SUDO service docker start || true
   ok "Docker instalado: $(docker --version)"
 }
@@ -92,7 +93,8 @@ $DOCKER compose version >/dev/null 2>&1 || instalar_compose
 ok "Compose $($DOCKER compose version --short)"
 command -v curl >/dev/null || $SUDO apt-get install -y -qq curl >/dev/null
 command -v python3 >/dev/null || $SUDO apt-get install -y -qq python3 >/dev/null
-ok "curl y python3 disponibles"
+command -v openssl >/dev/null || $SUDO apt-get install -y -qq openssl >/dev/null
+ok "curl, python3 y openssl disponibles"
 
 MEM=$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)
 [ "${MEM:-0}" -lt 4 ] && aviso "La máquina tiene ~${MEM} GB de RAM; se recomiendan 4 GB (HAPI FHIR usa hasta 768 MB)."
@@ -113,14 +115,22 @@ fijar() { # fijar CLAVE VALOR  (en .env)
   if grep -q "^$1=" .env; then sed -i "s|^$1=.*|$1=$2|" .env; else echo "$1=$2" >> .env; fi
 }
 
+aleatorio() { python3 -c 'import secrets; print(secrets.token_urlsafe(18))'; }
 if [ ! -f .env ]; then
   cp .env.example .env
-  fijar JWT_SECRET "$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
-  ok ".env creado con un secreto JWT aleatorio"
+  for clave in HSB_DB_PASSWORD API_DB_PASSWORD API_CENTRAL_DB_PASSWORD HAPI_DB_PASSWORD HAPI_KEYSTORE_PASSWORD; do
+    fijar "$clave" "$(aleatorio)"
+  done
+  ok ".env creado con contraseñas aleatorias para los roles de las bases"
 else
   ok ".env existente conservado"
 fi
-for par in DB_PORT_SEDE1:5433 MONGO_PORT_SEDE2:27018 DB_PORT_SEDE3:5435 DB_PORT_CENTRAL:5436 HAPI_PORT:8090 HSB_PORT:8001 API_PORT:8000; do
+# Variables nuevas de la v3 que falten en un .env anterior (se toman de .env.example)
+while IFS='=' read -r clave valor; do
+  case "$clave" in ''|\#*) continue ;; esac
+  grep -q "^${clave}=" .env || { echo "${clave}=${valor}" >> .env; aviso "Agregado a .env: ${clave}"; }
+done < .env.example
+for par in HAPI_PORT:8090 HSB_PORT:8001 API_PORT:8000; do
   clave="${par%%:*}"; defecto="${par##*:}"
   actual="$(grep -E "^${clave}=" .env | cut -d= -f2)"; actual="${actual:-$defecto}"
   nuevo="$(libre_desde "$actual")"
@@ -131,7 +141,7 @@ for par in DB_PORT_SEDE1:5433 MONGO_PORT_SEDE2:27018 DB_PORT_SEDE3:5435 DB_PORT_
   fi
 done
 set -a; . ./.env; set +a
-ok "Puertos: API ${API_PORT} · HSB ${HSB_PORT} · HAPI ${HAPI_PORT} · sedes ${DB_PORT_SEDE1}/${MONGO_PORT_SEDE2}/${DB_PORT_SEDE3} · central ${DB_PORT_CENTRAL}"
+ok "Puertos: API ${API_PORT} · HSB ${HSB_PORT} · HAPI ${HAPI_PORT} (solo localhost) · bases sin puertos publicados"
 
 # Nombres fijos de contenedor: si existe uno igual de OTRO proyecto, avisar en vez de pisarlo
 PROYECTO="$(basename "$DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')"
@@ -148,11 +158,18 @@ if [ "$DESDE_CERO" -eq 1 ]; then
   compose down -v --remove-orphans >/dev/null 2>&1 || true
   ok "Limpio: las bases se recrean desde db/ (cobertura FHIR 0 %)"
 fi
-paso "Construyendo imágenes y levantando los 7 servicios (la primera vez descarga ~2 GB)"
-compose up -d --build 2>&1 | grep -E "Built|Started|Created|Error|error" | sed 's/^/   /' || true
+# ── 3. Seguridad: certificados TLS, bases y roles de mínimo privilegio ─────
+paso "Generando la CA propia y los certificados TLS (certs/)"
+HAPI_KEYSTORE_PASSWORD="$HAPI_KEYSTORE_PASSWORD" CERT_IPS_EXTRA="${CERT_IPS_EXTRA:-}" bash scripts/generar_certificados.sh
+CURL="curl -s --cacert certs/ca.pem"
 
-# ── 4. Esperar a que todo esté sano ────────────────────────────────────────
-paso "Esperando a las bases de datos"
+paso "Levantando las bases de datos (TLS obligatorio, sin puertos publicados)"
+compose up -d pg_sede1 mongo_sede2 pg_sede3 pg_central 2>&1 | grep -E "Started|Created|Recreated|Error|error" | sed 's/^/   /' || true
+RENOVADOS=0; [ -f certs/.renovados ] && RENOVADOS=1 && rm -f certs/.renovados
+if [ "$RENOVADOS" -eq 1 ]; then
+  aviso "Certificados nuevos: se reinician las bases para que los tomen"
+  compose restart pg_sede1 mongo_sede2 pg_sede3 pg_central >/dev/null 2>&1 || true
+fi
 for c in pg_sede1 mongo_sede2 pg_sede3 pg_central; do
   for i in $(seq 1 60); do
     estado="$($DOCKER inspect -f '{{.State.Health.Status}}' "$c" 2>/dev/null || echo ninguno)"
@@ -160,33 +177,52 @@ for c in pg_sede1 mongo_sede2 pg_sede3 pg_central; do
   done
   [ "$estado" = "healthy" ] && ok "$c listo" || { error "$c no quedó sano (docker logs $c)"; exit 1; }
 done
-paso "Esperando a HAPI FHIR (suele tardar 1-2 minutos)"
+
+paso "Aplicando roles de mínimo privilegio (db/seguridad/)"
+$DOCKER exec pg_sede1 sh /seguridad/roles_sede.sh | sed 's/^/   /'
+$DOCKER exec pg_sede3 sh /seguridad/roles_sede.sh | sed 's/^/   /'
+$DOCKER exec pg_central sh /seguridad/roles_central.sh | sed 's/^/   /'
+$DOCKER exec mongo_sede2 mongosh --quiet --tls --tlsCAFile /etc/mongo-tls/ca.pem --host localhost \
+  -u "$POSTGRES_USER" -p "$POSTGRES_PASSWORD" --authenticationDatabase admin "$DB_NAME_SEDE2" /seguridad/mongo_roles.js | sed 's/^/   /'
+
+# ── 4. Construir y levantar los servicios ──────────────────────────────────
+paso "Construyendo y levantando HAPI FHIR, el bus y la API (la primera vez descarga ~2 GB)"
+compose up -d --build 2>&1 | grep -E "Built|Started|Created|Recreated|Error|error" | sed 's/^/   /' || true
+[ "$RENOVADOS" -eq 1 ] && compose restart hapi-fhir hsb api >/dev/null 2>&1 || true
+
+paso "Esperando a HAPI FHIR por HTTPS (suele tardar 1-2 minutos)"
 for i in $(seq 1 90); do
-  [ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${HAPI_PORT}/fhir/metadata")" = "200" ] && break; sleep 4
+  [ "$($CURL -o /dev/null -w '%{http_code}' "https://localhost:${HAPI_PORT}/fhir/metadata")" = "200" ] && break; sleep 4
 done
-[ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${HAPI_PORT}/fhir/metadata")" = "200" ] && ok "HAPI FHIR R4 listo" \
+[ "$($CURL -o /dev/null -w '%{http_code}' "https://localhost:${HAPI_PORT}/fhir/metadata")" = "200" ] && ok "HAPI FHIR R4 listo (HTTPS)" \
   || { error "HAPI no respondió (docker logs hapi_fhir_r4)"; exit 1; }
 for i in $(seq 1 30); do
-  [ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${HSB_PORT}/health")" = "200" ] && \
-  [ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${API_PORT}/health")" = "200" ] && break; sleep 2
+  [ "$($CURL -o /dev/null -w '%{http_code}' "https://localhost:${HSB_PORT}/health")" = "200" ] && \
+  [ "$($CURL -o /dev/null -w '%{http_code}' "https://localhost:${API_PORT}/health")" = "200" ] && break; sleep 2
 done
-SALUD="$(curl -s "http://localhost:${HSB_PORT}/health" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["status"], {k: v["motor"]+":"+v["estado"] for k, v in d["dependencias"]["sedes"].items()})')"
+SALUD="$($CURL "https://localhost:${HSB_PORT}/health" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["status"], {k: v["motor"]+":"+v["estado"] for k, v in d["dependencias"]["sedes"].items()})')"
 ok "Bus: $SALUD"
-ok "API: $(curl -s "http://localhost:${API_PORT}/health" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["status"], "· sedes", d["nodos_activos"])')"
+ok "API: $($CURL "https://localhost:${API_PORT}/health" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["status"], "· sedes", d["nodos_activos"])')"
+TOKEN="$($CURL -u "herramientas_qa:${OAUTH_SECRETO_QA}" -d grant_type=client_credentials "https://localhost:${API_PORT}/oauth/token" \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))')"
+[ -n "$TOKEN" ] && ok "OAuth 2.0: token de servicio emitido (client_credentials, RS256)" || { error "No se pudo obtener un token OAuth"; exit 1; }
+SIN_TOKEN="$($CURL -o /dev/null -w '%{http_code}' -X POST --data-binary @ejemplos/01_adt_a01_valido_sede2.hl7 "https://localhost:${HSB_PORT}/hsb/hl7")"
+[ "$SIN_TOKEN" = "401" ] && ok "El bus rechaza mensajes sin token (HTTP 401)" || aviso "El bus respondió $SIN_TOKEN a un mensaje sin token"
 
 # ── 5. Datos ───────────────────────────────────────────────────────────────
 if [ "$CON_DATOS" -eq 1 ]; then
   paso "Cargando los mensajes oficiales del docente"
   for f in ejemplos/01_adt_a01_valido_sede2.hl7 ejemplos/02_oru_r01_laboratorio_sede1.hl7 ejemplos/03_adt_a01_invalido.hl7 tests/datos/06_adt_a03_57_campos_sede1.hl7; do
-    e="$(curl -s -X POST --data-binary @"$f" "http://localhost:${HSB_PORT}/hsb/hl7" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("estado"))')"
+    e="$($CURL -H "Authorization: Bearer $TOKEN" -X POST --data-binary @"$f" "https://localhost:${HSB_PORT}/hsb/hl7" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("estado"))')"
     ok "$(basename "$f") -> $e"
   done
-  e="$(curl -s -X POST --data-binary @ejemplos/04_sede3_legado.csv "http://localhost:${HSB_PORT}/hsb/csv?sede=3" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["total_entregados"]+d["total_duplicados"], "válidas,", d["total_rechazados"], "rechazadas")')"
+  e="$($CURL -H "Authorization: Bearer $TOKEN" -X POST --data-binary @ejemplos/04_sede3_legado.csv "https://localhost:${HSB_PORT}/hsb/csv?sede=3" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["total_entregados"]+d["total_duplicados"], "válidas,", d["total_rechazados"], "rechazadas")')"
   ok "04_sede3_legado.csv -> $e"
   paso "Generando ${PACIENTES} pacientes sintéticos por el bus"
-  python3 scripts/generar_datos_prueba.py --url "http://localhost:${HSB_PORT}" --pacientes "$PACIENTES" | sed 's/^/   /'
+  python3 scripts/generar_datos_prueba.py --url "https://localhost:${HSB_PORT}" --api "https://localhost:${API_PORT}" \
+    --ca certs/ca.pem --secreto "$OAUTH_SECRETO_QA" --pacientes "$PACIENTES" | sed 's/^/   /'
   paso "Publicando en FHIR los registros históricos de cada sede (migración)"
-  curl -s -X POST "http://localhost:${HSB_PORT}/hsb/migrar" | python3 -c '
+  $CURL -H "Authorization: Bearer $TOKEN" -X POST "https://localhost:${HSB_PORT}/hsb/migrar" | python3 -c '
 import sys, json
 for s in json.load(sys.stdin)["sedes"]:
     print("   ✔ {} ({}): {} publicados, cobertura FHIR {} %".format(s["nombre"], s["motor"], s["publicados"], s["cobertura_fhir"]))'
@@ -195,19 +231,21 @@ fi
 # ── 6. Verificación ────────────────────────────────────────────────────────
 if [ "$VERIFICAR" -eq 1 ]; then
   paso "Verificando la interoperabilidad sede por sede"
-  python3 scripts/verificar_interoperabilidad.py --api "http://localhost:${API_PORT}" --hsb "http://localhost:${HSB_PORT}" \
-    --fhir "http://localhost:${HAPI_PORT}/fhir" --salida docs/evidencias/07_verificacion_por_sede.md | tail -1 | sed 's/^/   /'
+  python3 scripts/verificar_interoperabilidad.py --api "https://localhost:${API_PORT}" --hsb "https://localhost:${HSB_PORT}" \
+    --fhir "https://localhost:${HAPI_PORT}/fhir" --ca certs/ca.pem --secreto-qa "$OAUTH_SECRETO_QA" \
+    --secreto-sede1 "$OAUTH_SECRETO_SEDE1" --salida docs/evidencias/07_verificacion_por_sede.md | tail -1 | sed 's/^/   /'
 fi
 
 # ── Resumen ────────────────────────────────────────────────────────────────
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"; IP="${IP:-localhost}"
 echo -e "\n${V}Plataforma lista.${N}"
 cat <<FIN
-   Vistas web ......... http://${IP}:${API_PORT}        (login con los usuarios de prueba del README)
-   Bus (HSB) .......... http://${IP}:${HSB_PORT}/health
-   HAPI FHIR R4 ....... http://${IP}:${HAPI_PORT}/fhir
-   Sede 1 PostgreSQL .. ${IP}:${DB_PORT_SEDE1}   Sede 2 MongoDB .. ${IP}:${MONGO_PORT_SEDE2}   Sede 3 PostgreSQL .. ${IP}:${DB_PORT_SEDE3}
-   Base central ....... ${IP}:${DB_PORT_CENTRAL}  (auditoría, cuentas y FHIR)
+   Vistas web ......... https://${IP}:${API_PORT}       (login con los usuarios de prueba del README)
+   OAuth 2.0 .......... https://${IP}:${API_PORT}/.well-known/oauth-authorization-server
+   Bus (HSB) .......... https://${IP}:${HSB_PORT}/health  (las entradas exigen Bearer token)
+   HAPI FHIR R4 ....... https://localhost:${HAPI_PORT}/fhir  (solo desde este servidor)
+   Bases de datos ..... sin puertos publicados: red interna red_datos, TLS y un rol por servicio
+   CA de la plataforma  certs/ca.pem  (impórtela en el navegador para no ver el aviso de certificado)
 
    Usuarios: admin_plataforma / Admin123! · medico_mateo / Medico123! · admision_laura / Admision123!
              auditor_elena / Auditor123! · paciente_carlos / Paciente123!

@@ -102,14 +102,16 @@ class RepositorioPostgres(RepositorioSede):
             "host": os.getenv(f"DB_HOST_SEDE{n}", "localhost"),
             "port": int(os.getenv(f"DB_PORT_SEDE{n}", str(5432 + n))),
             "dbname": os.getenv(f"DB_NAME_SEDE{n}", {1: "clinica_sincelejo", 3: "clinica_corozal"}.get(n, "clinica")),
-            "user": os.getenv("POSTGRES_USER", "clinica_user"),
-            "password": os.getenv("POSTGRES_PASSWORD", "clinica_pass_2026"),
+            # Cada servicio entra con su propio rol: el HSB escribe (hsb_escritor), la API solo lee (api_lector)
+            "user": os.getenv("SEDES_DB_USER", os.getenv("POSTGRES_USER", "clinica_user")),
+            "password": os.getenv("SEDES_DB_PASSWORD", os.getenv("POSTGRES_PASSWORD", "clinica_pass_2026")),
         }
 
     def _conectar(self):
         if not PSYCOPG_AVAILABLE:
             raise ConnectionError("Driver psycopg2 no instalado")
-        return psycopg2.connect(connect_timeout=int(TIMEOUT_S), **self.cfg)
+        from seguridad import tls
+        return psycopg2.connect(connect_timeout=int(TIMEOUT_S), **self.cfg, **tls.params_postgres())
 
     def ping(self) -> bool:
         try:
@@ -300,8 +302,10 @@ class RepositorioMongo(RepositorioSede):
             raise ConnectionError("Driver pymongo no instalado")
         cliente = _CLIENTES_MONGO.get(self.url)
         if cliente is None:
+            from seguridad import tls
             cliente = pymongo.MongoClient(self.url, serverSelectionTimeoutMS=int(TIMEOUT_S * 1000),
-                                          connectTimeoutMS=int(TIMEOUT_S * 1000), tz_aware=False)
+                                          connectTimeoutMS=int(TIMEOUT_S * 1000), tz_aware=False,
+                                          **tls.params_mongo())
             _CLIENTES_MONGO[self.url] = cliente
         return cliente[self.dbname]
 

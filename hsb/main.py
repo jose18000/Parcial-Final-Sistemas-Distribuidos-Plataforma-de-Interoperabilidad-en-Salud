@@ -12,6 +12,9 @@ Operación:
   GET  /hsb/catalogo       Los 57 campos y su mapeo HL7/CSV/PostgreSQL/MongoDB/FHIR
   GET  /health             Estado del bus y de sus dependencias
   GET  /metrics            Contadores, latencia, % fallidos, duplicados
+
+Seguridad (hsb/autorizacion.py): las entradas exigen un token OAuth 2.0 con scope hsb.ingesta y
+la operación (mensajes, reencolar, migrar) exige hsb.admin. Con TLS_ACTIVO el bus sirve HTTPS.
 """
 
 import json
@@ -20,7 +23,7 @@ from dataclasses import asdict
 from typing import Any, Dict, Optional
 
 import httpx
-from fastapi import FastAPI, Query, Request, status
+from fastapi import Depends, FastAPI, Query, Request, status
 from fastapi.responses import JSONResponse
 
 from traductor.traductor import desde_hl7, desde_json
@@ -31,6 +34,8 @@ from hsb.queue_manager import (HAPI_FHIR_URL, COLA, MAX_REINTENTOS, RETRY_BASE_S
                                recuperar_pendientes, listar_mensajes, contar_por_estado)
 from hsb.metrics import metrics
 from db.repositorio import todos_los_repositorios
+from hsb.autorizacion import requerir, verificar_sede
+from seguridad import tls
 
 app = FastAPI(title="Health Service Bus (HSB)",
               description="Bus de servicios de salud: HL7 v2 / CSV / JSON -> traductor 57 campos -> FHIR R4",
@@ -50,7 +55,7 @@ def _respuesta(resultado: Dict[str, Any]) -> JSONResponse:
 
 
 @app.post("/hsb/hl7")
-async def recibir_hl7(request: Request):
+async def recibir_hl7(request: Request, claims: Dict[str, Any] = Depends(requerir("hsb.ingesta"))):
     raw = (await request.body()).decode("utf-8", errors="replace")
     if not raw.strip():
         metrics.registrar_rechazado()
@@ -60,11 +65,14 @@ async def recibir_hl7(request: Request):
     except Exception as e:
         metrics.registrar_rechazado()
         return JSONResponse(status_code=422, content={"estado": "rechazado", "motivo": f"Error de sintaxis HL7: {e}"})
+    verificar_sede(claims, meta.get("sede_origen"))
     return _respuesta(procesar(meta, reg, raw.strip()))
 
 
 @app.post("/hsb/csv")
-async def recibir_csv(request: Request, sede: int = Query(..., description="Sede que envía el CSV (1 a 3)")):
+async def recibir_csv(request: Request, sede: int = Query(..., description="Sede que envía el CSV (1 a 3)"),
+                      claims: Dict[str, Any] = Depends(requerir("hsb.ingesta"))):
+    verificar_sede(claims, sede)
     contenido = (await request.body()).decode("utf-8", errors="replace")
     if not contenido.strip():
         return JSONResponse(status_code=400, content={"estado": "rechazado", "motivo": "Contenido CSV vacío"})
@@ -95,7 +103,9 @@ async def recibir_csv(request: Request, sede: int = Query(..., description="Sede
 
 
 @app.post("/hsb/json")
-async def recibir_json(request: Request, sede: int = Query(..., description="Sede destino (1 a 3)")):
+async def recibir_json(request: Request, sede: int = Query(..., description="Sede destino (1 a 3)"),
+                       claims: Dict[str, Any] = Depends(requerir("hsb.ingesta"))):
+    verificar_sede(claims, sede)
     try:
         obj = await request.json()
     except Exception:
@@ -107,17 +117,17 @@ async def recibir_json(request: Request, sede: int = Query(..., description="Sed
     return _respuesta(procesar(meta, reg, json.dumps(obj, ensure_ascii=False)))
 
 
-@app.get("/hsb/mensajes")
+@app.get("/hsb/mensajes", dependencies=[Depends(requerir("hsb.admin"))])
 def mensajes(limite: int = 50, estado: Optional[str] = None):
     return listar_mensajes(limite, estado.upper() if estado else None)
 
 
-@app.post("/hsb/reencolar/{mensaje_id}")
+@app.post("/hsb/reencolar/{mensaje_id}", dependencies=[Depends(requerir("hsb.admin"))])
 def reencolar(mensaje_id: str):
     return reencolar_mensaje(mensaje_id)
 
 
-@app.post("/hsb/migrar")
+@app.post("/hsb/migrar", dependencies=[Depends(requerir("hsb.admin"))])
 def migrar_a_fhir(sede: Optional[int] = None):
     """Publica en FHIR los registros legados de una sede (o de las 3) que aún no lo estén."""
     from hsb.migracion import migrar
@@ -134,7 +144,7 @@ def catalogo():
 @app.get("/health")
 def healthcheck():
     try:
-        hapi_ok = httpx.get(f"{HAPI_FHIR_URL}/metadata", timeout=3.0).status_code == 200
+        hapi_ok = httpx.get(f"{HAPI_FHIR_URL}/metadata", timeout=3.0, verify=tls.verificacion_http()).status_code == 200
     except Exception:
         hapi_ok = False
     sedes = {f"sede_{r.sede_id}": {"motor": r.motor, "estado": "UP" if r.ping() else "DOWN"}

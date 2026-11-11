@@ -99,7 +99,8 @@ def verificar_idempotencia(mensaje_id: str, hash_contenido: str, sede_id: Option
 
 def enviar_bundle_a_hapi(bundle: Dict[str, Any], timeout_sec: float = 8.0) -> Tuple[bool, str]:
     try:
-        with httpx.Client(timeout=timeout_sec) as client:
+        from seguridad import tls
+        with httpx.Client(timeout=timeout_sec, verify=tls.verificacion_http()) as client:
             resp = client.post(HAPI_FHIR_URL, headers={"Content-Type": "application/fhir+json"}, json=bundle)
         if resp.status_code in (200, 201):
             logger.info(f"HAPI FHIR aceptó el bundle {bundle.get('id')} (HTTP {resp.status_code})")

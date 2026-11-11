@@ -17,11 +17,13 @@ RUN pip install --no-cache-dir -r /app/hsb/requirements.txt
 COPY hsb /app/hsb
 COPY fhir /app/fhir
 COPY traductor /app/traductor
+COPY seguridad /app/seguridad
 COPY db /app/db
 COPY ejemplos /app/ejemplos
 
 ENV PYTHONPATH=/app
 EXPOSE 8001
 
-CMD ["uvicorn", "hsb.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# HTTPS con el certificado de /certs si TLS_ACTIVO=true (seguridad/servidor.py)
+CMD ["python", "-m", "seguridad.servidor", "hsb.main:app", "8001"]
 

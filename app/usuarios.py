@@ -32,9 +32,11 @@ except ImportError:
     PSYCOPG_AVAILABLE = False
 
 USAR_BD = os.getenv("AUDIT_DB_HOST") is not None and PSYCOPG_AVAILABLE
+# La API entra a la base central con su propio rol (api_central), no con el superusuario.
 CFG = {"host": os.getenv("AUDIT_DB_HOST", "localhost"), "port": int(os.getenv("AUDIT_DB_PORT", "5432")),
-       "dbname": os.getenv("AUDIT_DB_NAME", "clinica_central"), "user": os.getenv("POSTGRES_USER", "clinica_user"),
-       "password": os.getenv("POSTGRES_PASSWORD", "clinica_pass_2026")}
+       "dbname": os.getenv("AUDIT_DB_NAME", "clinica_central"),
+       "user": os.getenv("AUDIT_DB_USER", os.getenv("POSTGRES_USER", "clinica_user")),
+       "password": os.getenv("AUDIT_DB_PASSWORD", os.getenv("POSTGRES_PASSWORD", "clinica_pass_2026"))}
 ROLES = ("paciente", "admisionista", "medico", "auditor", "administrador")
 CAMPOS = ("username", "nombre_completo", "rol", "documento_id", "sede_id", "activo", "debe_cambiar_clave",
           "origen", "creado_por", "creado_en", "ultimo_acceso")
@@ -114,7 +116,8 @@ def validar_clave_nueva(clave: str) -> List[str]:
 # ── Almacenamiento ───────────────────────────────────────────────────────
 
 def _conectar():
-    return psycopg2.connect(connect_timeout=3, **CFG)
+    from seguridad import tls
+    return psycopg2.connect(connect_timeout=3, **CFG, **tls.params_postgres())
 
 
 def _ahora() -> datetime.datetime:
@@ -139,7 +142,11 @@ def inicializar() -> None:
             conn = _conectar()
             try:
                 with conn, conn.cursor() as cur:
-                    cur.execute(DDL)
+                    # La tabla la crea db/central/init.sql; el rol de la API no tiene permiso de CREATE,
+                    # así que solo se intenta si falta (bases antiguas).
+                    cur.execute("SELECT to_regclass('public.usuario_sistema') IS NOT NULL")
+                    if not cur.fetchone()[0]:
+                        cur.execute(DDL)
                     for u, clave, rol, nombre, doc, sede in SEMILLA:
                         cur.execute("""INSERT INTO usuario_sistema (username, password_hash, rol, nombre_completo,
                                            documento_id, sede_id, origen, creado_por)
@@ -191,6 +198,12 @@ def _guardar(u: Dict[str, Any], nuevo: bool) -> None:
 
 
 # ── Autenticación ────────────────────────────────────────────────────────
+
+def obtener_publico(username: str) -> Optional[Dict[str, Any]]:
+    """Datos públicos de una cuenta (sin el hash de la contraseña); None si no existe."""
+    u = _obtener(username)
+    return _publico(u) if u else None
+
 
 def autenticar(username: str, clave: str) -> Optional[Dict[str, Any]]:
     u = _obtener((username or "").strip())
