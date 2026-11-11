@@ -21,7 +21,10 @@ Solo usa la biblioteca estándar de Python. Todos los datos son ficticios.
 """
 
 import argparse
+import base64
 import json
+import os
+import ssl
 import random
 import urllib.error
 import urllib.request
@@ -193,11 +196,26 @@ class Generador:
         return ";".join(str(v).replace(";", ",") for v in valores)
 
 
+CTX = None          # contexto TLS con la CA de la plataforma
+TOKEN = None        # token OAuth 2.0 del cliente herramientas_qa
+
+
+def obtener_token(api, cliente, secreto):
+    """OAuth 2.0 client_credentials: el bus solo acepta mensajes con un token válido."""
+    req = urllib.request.Request(f"{api}/oauth/token", data=b"grant_type=client_credentials", method="POST",
+                                 headers={"Content-Type": "application/x-www-form-urlencoded",
+                                          "Authorization": "Basic " + base64.b64encode(f"{cliente}:{secreto}".encode()).decode()})
+    with urllib.request.urlopen(req, timeout=30, context=CTX) as resp:
+        return json.loads(resp.read())["access_token"]
+
+
 def enviar(url, ruta, cuerpo):
-    req = urllib.request.Request(url + ruta, data=cuerpo.encode("utf-8"), method="POST",
-                                 headers={"Content-Type": "text/plain; charset=utf-8"})
+    cab = {"Content-Type": "text/plain; charset=utf-8"}
+    if TOKEN:
+        cab["Authorization"] = f"Bearer {TOKEN}"
+    req = urllib.request.Request(url + ruta, data=cuerpo.encode("utf-8"), method="POST", headers=cab)
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=60, context=CTX) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         try:
@@ -214,7 +232,15 @@ def main():
     ap.add_argument("--pacientes", type=int, default=60)
     ap.add_argument("--semilla", type=int, default=2026)
     ap.add_argument("--hilos", type=int, default=4)
+    ap.add_argument("--api", default=None, help="URL de la API para pedir el token OAuth 2.0 (si el bus lo exige)")
+    ap.add_argument("--ca", default="certs/ca.pem", help="CA de la plataforma para HTTPS")
+    ap.add_argument("--cliente", default="herramientas_qa")
+    ap.add_argument("--secreto", default=os.getenv("OAUTH_SECRETO_QA", "qa_secreto_2026"))
     args = ap.parse_args()
+    global CTX, TOKEN
+    CTX = ssl.create_default_context(cafile=args.ca) if os.path.exists(args.ca) else None
+    if args.api:
+        TOKEN = obtener_token(args.api, args.cliente, args.secreto)
 
     g = Generador(args.semilla)
     hl7, filas_csv = [], []

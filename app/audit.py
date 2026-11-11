@@ -41,8 +41,8 @@ CFG_CENTRAL = {
     "host": os.getenv("AUDIT_DB_HOST", "localhost"),
     "port": int(os.getenv("AUDIT_DB_PORT", "5432")),
     "dbname": os.getenv("AUDIT_DB_NAME", "clinica_central"),
-    "user": os.getenv("POSTGRES_USER", "clinica_user"),
-    "password": os.getenv("POSTGRES_PASSWORD", "clinica_pass_2026"),
+    "user": os.getenv("AUDIT_DB_USER", os.getenv("POSTGRES_USER", "clinica_user")),
+    "password": os.getenv("AUDIT_DB_PASSWORD", os.getenv("POSTGRES_PASSWORD", "clinica_pass_2026")),
 }
 
 _CADENA_AUDITORIA: List[Dict[str, Any]] = []   # cadena en memoria (modo sin base de datos)
@@ -64,7 +64,8 @@ def _hash_de(ev: Dict[str, Any]) -> str:
 
 
 def _conectar():
-    return psycopg2.connect(connect_timeout=3, **CFG_CENTRAL)
+    from seguridad import tls
+    return psycopg2.connect(connect_timeout=3, **CFG_CENTRAL, **tls.params_postgres())
 
 
 def _insertar_en_bd(cur, ev: Dict[str, Any]) -> Dict[str, Any]:

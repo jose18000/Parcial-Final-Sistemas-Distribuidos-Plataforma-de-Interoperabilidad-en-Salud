@@ -21,11 +21,13 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.auth import autenticar_usuario, crear_token_jwt, USUARIOS_PRUEBA
+from app import oauth
+from seguridad import tls
 from app import usuarios
 from app.rbac import obtener_usuario_autenticado, requerir_roles, validar_acceso_historia_clinica
 from app.audit import (registrar_evento_auditoria, verificar_cadena_auditoria, adulterar_evento_para_prueba,
@@ -95,11 +97,17 @@ def _ahora() -> str:
     return datetime.datetime.now().replace(microsecond=0).isoformat()
 
 
+def _cabecera_hsb() -> Dict[str, str]:
+    """La API habla con el bus como cliente OAuth 2.0 (client_credentials, scopes hsb.ingesta y hsb.admin)."""
+    return {"Authorization": f"Bearer {oauth.token_api_para_hsb()}"}
+
+
 def _enviar_al_hsb(registro: Dict[str, Any], sede: int, tipo: str) -> Dict[str, Any]:
     """Toda escritura clínica entra por el bus (validación, FHIR, idempotencia, reintentos)."""
     try:
-        resp = httpx.post(f"{HSB_URL}/hsb/json", params={"sede": sede},
-                          json={"tipo_mensaje": tipo, "registro": registro}, timeout=20.0)
+        resp = httpx.post(f"{HSB_URL}/hsb/json", params={"sede": sede}, headers=_cabecera_hsb(),
+                          json={"tipo_mensaje": tipo, "registro": registro}, timeout=20.0,
+                          verify=tls.verificacion_http())
         datos = resp.json()
         datos["http"] = resp.status_code
         return datos
@@ -132,7 +140,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
                "administrador": "/panel"}
     url = "/cambiar-clave" if usr.get("debe_cambiar_clave") else destino.get(usr["rol"], "/reporte")
     resp = RedirectResponse(url=url, status_code=303)
-    resp.set_cookie(key="access_token", value=token, httponly=True, samesite="lax", max_age=3600)
+    resp.set_cookie(key="access_token", value=token, httponly=True, samesite="lax", max_age=3600, secure=tls.activo())
     return resp
 
 
@@ -166,7 +174,8 @@ def guardar_cambio_clave(request: Request, actual: str = Form(...), nueva: str =
                                              "error": "; ".join(e.motivos).capitalize()}, status_code=422)
     registrar_evento_auditoria("CAMBIO_CLAVE", usuario["username"], usuario["rol"], "/cambiar-clave", "EXITOSO", {})
     resp = RedirectResponse(url=DESTINO_ROL.get(actualizado["rol"], "/reporte"), status_code=303)
-    resp.set_cookie(key="access_token", value=_token_de(actualizado), httponly=True, samesite="lax", max_age=3600)
+    resp.set_cookie(key="access_token", value=_token_de(actualizado), httponly=True, samesite="lax", max_age=3600,
+                    secure=tls.activo())
     return resp
 
 
@@ -207,7 +216,8 @@ def _resumen_admision(doc: str) -> Dict[str, Any]:
 
 def _mensajes_bus(limite: int = 25) -> Dict[str, Any]:
     try:
-        return httpx.get(f"{HSB_URL}/hsb/mensajes", params={"limite": limite}, timeout=5.0).json()
+        return httpx.get(f"{HSB_URL}/hsb/mensajes", params={"limite": limite}, headers=_cabecera_hsb(),
+                         timeout=5.0, verify=tls.verificacion_http()).json()
     except Exception as e:
         return {"mensajes": [], "error": f"HSB no disponible ({e.__class__.__name__})"}
 
@@ -429,7 +439,7 @@ def _conteo_fhir() -> Dict[str, Any]:
 
     def contar(tipo):
         try:
-            r = httpx.get(f"{hapi}/{tipo}", params={"_summary": "count"}, timeout=4.0)
+            r = httpx.get(f"{hapi}/{tipo}", params={"_summary": "count"}, timeout=4.0, verify=tls.verificacion_http())
             return tipo, r.json().get("total", 0) if r.status_code == 200 else None
         except Exception:
             return tipo, None
@@ -559,7 +569,8 @@ def api_migrar(sede: Optional[int] = None, usuario: Dict[str, Any] = Depends(req
     if usuario.get("sede_id"):
         sede = int(usuario["sede_id"])          # un administrador de sede solo migra su sede
     try:
-        r = httpx.post(f"{HSB_URL}/hsb/migrar", params={"sede": sede} if sede else None, timeout=300.0)
+        r = httpx.post(f"{HSB_URL}/hsb/migrar", params={"sede": sede} if sede else None, headers=_cabecera_hsb(),
+                       timeout=300.0, verify=tls.verificacion_http())
         datos = r.json()
     except Exception as e:
         return JSONResponse(status_code=503, content={"error": f"HSB no disponible ({e.__class__.__name__})"})
@@ -627,6 +638,94 @@ def api_restablecer_usuario(username: str, usuario: Dict[str, Any] = Depends(req
     return {"ok": True, "clave_temporal": temporal}
 
 
+# ── OAuth 2.0 (app/oauth.py) ──────────────────────────────────────────────
+
+_NO_CACHE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+
+
+async def _formulario(request: Request) -> Dict[str, str]:
+    return {k: str(v) for k, v in (await request.form()).items()}
+
+
+def _error_oauth(e: "oauth.ErrorOAuth") -> JSONResponse:
+    cab = dict(_NO_CACHE)
+    if e.status == 401:
+        cab["WWW-Authenticate"] = 'Basic realm="oauth"'
+    return JSONResponse(status_code=e.status, content=e.cuerpo(), headers=cab)
+
+
+@app.post("/oauth/token", tags=["OAuth 2.0"])
+async def oauth_token(request: Request):
+    """RFC 6749: grant_type = password | client_credentials | refresh_token (cliente por Basic o en el formulario)."""
+    form = await _formulario(request)
+    grant = form.get("grant_type", "")
+    try:
+        resp, quien = oauth.emitir(form, request.headers.get("authorization"))
+    except oauth.ErrorOAuth as e:
+        registrar_evento_auditoria("OAUTH_TOKEN", form.get("username") or form.get("client_id") or "desconocido",
+                                   "desconocido", "/oauth/token", "FALLIDO", {"grant_type": grant, "error": e.error})
+        return _error_oauth(e)
+    registrar_evento_auditoria("OAUTH_TOKEN", quien["usuario"], quien["rol"], "/oauth/token", "EXITOSO",
+                               {"grant_type": grant, "scope": resp.get("scope")})
+    return JSONResponse(content=resp, headers=_NO_CACHE)
+
+
+@app.post("/oauth/revoke", tags=["OAuth 2.0"])
+async def oauth_revocar(request: Request):
+    """RFC 7009: revoca un refresh token. Responde 200 aunque el token no exista."""
+    try:
+        oauth.revocar(await _formulario(request), request.headers.get("authorization"))
+    except oauth.ErrorOAuth as e:
+        return _error_oauth(e)
+    return JSONResponse(content={}, headers=_NO_CACHE)
+
+
+@app.post("/oauth/introspect", tags=["OAuth 2.0"])
+async def oauth_introspeccion(request: Request):
+    """RFC 7662: ¿el token está activo? Requiere autenticación del cliente."""
+    try:
+        return JSONResponse(content=oauth.introspeccionar(await _formulario(request),
+                                                          request.headers.get("authorization")), headers=_NO_CACHE)
+    except oauth.ErrorOAuth as e:
+        return _error_oauth(e)
+
+
+@app.get("/oauth/jwks", tags=["OAuth 2.0"])
+def oauth_jwks():
+    """RFC 7517: clave pública con la que el HSB (o cualquiera) verifica la firma de los tokens."""
+    return oauth.jwks()
+
+
+@app.get("/.well-known/oauth-authorization-server", tags=["OAuth 2.0"])
+def oauth_metadatos(request: Request):
+    """RFC 8414: dónde están los endpoints y qué soporta el servidor."""
+    return oauth.metadatos(str(request.base_url))
+
+
+# ── Pasarela FHIR autenticada ─────────────────────────────────────────────
+# HAPI FHIR no tiene autenticación propia, así que no se publica a la red (solo 127.0.0.1 del
+# servidor). Quien necesite FHIR desde fuera entra por aquí: token OAuth 2.0 de un rol clínico o
+# de auditoría, petición reenviada a HAPI por HTTPS y acceso registrado en la auditoría.
+
+@app.api_route("/fhir/{ruta:path}", methods=["GET", "POST"], tags=["FHIR"])
+async def pasarela_fhir(ruta: str, request: Request,
+                        usuario: Dict[str, Any] = Depends(requerir_roles(["medico", "auditor", "administrador"]))):
+    hapi = os.getenv("HAPI_FHIR_URL", "http://localhost:8090/fhir")
+    cuerpo = await request.body() if request.method == "POST" else None
+    cab = {k: v for k, v in request.headers.items() if k.lower() in ("content-type", "accept")}
+    try:
+        async with httpx.AsyncClient(timeout=30.0, verify=tls.verificacion_http()) as cliente:
+            r = await cliente.request(request.method, f"{hapi}/{ruta}", params=dict(request.query_params),
+                                      content=cuerpo, headers=cab)
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"error": f"HAPI FHIR no disponible ({e.__class__.__name__})"})
+    registrar_evento_auditoria("CONSULTA_FHIR", usuario["username"], usuario["rol"], f"/fhir/{ruta}",
+                               "EXITOSO" if r.status_code < 400 else "FALLIDO",
+                               {"metodo": request.method, "http": r.status_code})
+    return Response(content=r.content, status_code=r.status_code,
+                    media_type=r.headers.get("content-type", "application/fhir+json"))
+
+
 # ── API REST ──────────────────────────────────────────────────────────────
 
 @app.get("/api/pacientes/{doc}/historia")
@@ -672,7 +771,15 @@ def api_eventos(limite: int = 50, usuario: Dict[str, Any] = Depends(requerir_rol
 @app.post("/api/auditoria/alterar-prueba")
 def api_alterar(indice: int = Form(1), usuario: Dict[str, Any] = Depends(requerir_roles(["auditor", "administrador"]))):
     """Demo: cambia una fila de auditoría sin recalcular su hash (como un UPDATE manual)."""
-    adulterar_evento_para_prueba(indice=indice, campo="usuario_sistema", nuevo_valor="intruso_adulterado")
+    try:
+        adulterar_evento_para_prueba(indice=indice, campo="usuario_sistema", nuevo_valor="intruso_adulterado")
+    except Exception as e:
+        if e.__class__.__name__ == "InsufficientPrivilege":
+            # El rol de la API (api_central) solo puede INSERTAR y LEER la auditoría: no puede cambiarla.
+            raise HTTPException(status_code=403, detail=(
+                "La aplicación no tiene permiso para modificar la auditoría (rol api_central: solo INSERT y "
+                "SELECT). Para la prueba de alteración, un DBA debe hacer el UPDATE directamente en pg_central."))
+        raise
     return RedirectResponse(url="/reporte?pestana=tablero", status_code=303)
 
 

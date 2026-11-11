@@ -1,6 +1,9 @@
 # Variables de entorno — NUNCA versionar
 .env
 
+# Certificados TLS, CA y clave de firma OAuth (se generan con scripts/generar_certificados.sh)
+certs/
+
 # Datos y volúmenes Docker
 volumes/
 data/
@@ -42,3 +45,8 @@ logs/
 tmp/
 scratch/
 
+
+# Archivos temporales de Office
+~$*.docx
+~$*.xlsx
+~$*.pptx

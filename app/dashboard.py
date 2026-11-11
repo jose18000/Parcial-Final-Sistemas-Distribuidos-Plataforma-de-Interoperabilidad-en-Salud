@@ -47,7 +47,8 @@ def estado_sedes() -> Dict[str, Any]:
 
 def obtener_metricas_bus() -> Dict[str, Any]:
     try:
-        resp = httpx.get(HSB_METRICS_URL, timeout=8.0)
+        from seguridad import tls
+        resp = httpx.get(HSB_METRICS_URL, timeout=8.0, verify=tls.verificacion_http())
         if resp.status_code == 200:
             datos = resp.json()
             datos["estado_general"] = datos.get("estado_general", "SALUDABLE")
@@ -63,7 +64,8 @@ def obtener_metricas_bus() -> Dict[str, Any]:
 
 def hapi_disponible() -> bool:
     try:
-        return httpx.get(f"{HAPI_FHIR_URL}/metadata", timeout=3.0).status_code == 200
+        from seguridad import tls
+        return httpx.get(f"{HAPI_FHIR_URL}/metadata", timeout=3.0, verify=tls.verificacion_http()).status_code == 200
     except Exception:
         return False
 

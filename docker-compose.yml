@@ -1,69 +1,91 @@
 # docker-compose.yml — Plataforma Distribuida de Interoperabilidad Clínica
-# Un solo comando:   docker compose up -d --build
-# Desde cero:        docker compose down -v && docker compose up -d --build
+# Use desplegar.sh: genera los certificados, aplica los roles de las bases y levanta todo.
 #
 #   Sede 1 Sincelejo  -> PostgreSQL  (pg_sede1)
 #   Sede 2 Cartagena  -> MongoDB     (mongo_sede2)
 #   Sede 3 Corozal    -> PostgreSQL  (pg_sede3)
-#   Auditoría central -> PostgreSQL  (pg_central)
-#   HAPI FHIR R4, HSB (bus) y API Gateway con las 4 vistas
+#   Base central      -> PostgreSQL  (pg_central: auditoría, cuentas, refresh tokens y base de HAPI)
+#   HAPI FHIR R4, HSB (bus) y API Gateway (vistas por rol + servidor OAuth 2.0)
+#
+# Seguridad (v3):
+#   - Redes: las bases viven en "red_datos" (interna, sin salida ni puertos publicados);
+#     solo la API y el bus quedan expuestos, y HAPI solo en 127.0.0.1 del servidor.
+#   - Cifrado en tránsito: HTTPS entre API, HSB y HAPI; TLS hacia PostgreSQL y MongoDB.
+#     Todo firmado por la CA propia (certs/, generada por scripts/generar_certificados.sh).
+#   - OAuth 2.0: la API emite tokens RS256; el bus exige token con scope.
+#   - Mínimo privilegio: cada servicio entra a las bases con su propio rol.
 
 x-credenciales: &credenciales
   POSTGRES_USER: ${POSTGRES_USER:-clinica_user}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinica_pass_2026}
 
-x-conexiones-sedes: &conexiones-sedes
+x-roles-sede: &roles-sede
+  HSB_DB_PASSWORD: ${HSB_DB_PASSWORD:-hsb_pass_2026}
+  API_DB_PASSWORD: ${API_DB_PASSWORD:-api_pass_2026}
+
+x-sedes: &sedes
   DB_HOST_SEDE1: pg_sede1
   DB_PORT_SEDE1: "5432"
   DB_NAME_SEDE1: ${DB_NAME_SEDE1:-clinica_sincelejo}
-  MONGO_URL_SEDE2: mongodb://${POSTGRES_USER:-clinica_user}:${POSTGRES_PASSWORD:-clinica_pass_2026}@mongo_sede2:27017/?authSource=admin
   DB_NAME_SEDE2: ${DB_NAME_SEDE2:-clinica_cartagena}
   DB_HOST_SEDE3: pg_sede3
   DB_PORT_SEDE3: "5432"
   DB_NAME_SEDE3: ${DB_NAME_SEDE3:-clinica_corozal}
-  POSTGRES_USER: ${POSTGRES_USER:-clinica_user}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinica_pass_2026}
-  HAPI_FHIR_URL: http://hapi-fhir:8080/fhir
-  FHIR_FULLURL_BASE: http://localhost:8090/fhir
+  HAPI_FHIR_URL: https://hapi-fhir:8080/fhir
+  FHIR_FULLURL_BASE: https://localhost:8090/fhir
+  TLS_ACTIVO: "true"
+  TLS_CA_FILE: /certs/ca.pem
+  OAUTH_ISSUER: ${OAUTH_ISSUER:-https://api:8000}
+
+x-pg: &pg
+  image: postgres:16-alpine
+  entrypoint: ["/bin/sh", "/seguridad/pg_tls.sh"]
+  command: ["postgres"]
+  networks: [red_datos]
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+    interval: 5s
+    timeout: 5s
+    retries: 12
+  restart: unless-stopped
 
 services:
 
   # ── Sede 1: Sincelejo · PostgreSQL ──────────────────────────────────────
   pg_sede1:
-    image: postgres:16-alpine
+    <<: *pg
     container_name: pg_sede1
     environment:
-      <<: *credenciales
+      <<: [*credenciales, *roles-sede]
       POSTGRES_DB: ${DB_NAME_SEDE1:-clinica_sincelejo}
-    ports:
-      - "${DB_PORT_SEDE1:-5433}:5432"
+      TLS_NOMBRE: pg_sede1
     volumes:
       - pg_data_sede1:/var/lib/postgresql/data
+      - ./certs:/certs:ro
+      - ./db/seguridad:/seguridad:ro
       - ./db/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
       - ./db/sede1/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
+      - ./db/seguridad/roles_sede.sh:/docker-entrypoint-initdb.d/02_roles.sh:ro
 
   # ── Sede 2: Cartagena · MongoDB (nodo no relacional) ────────────────────
   mongo_sede2:
     image: mongo:7.0
     container_name: mongo_sede2
-    command: ["--wiredTigerCacheSizeGB", "0.25"]
+    entrypoint: ["/bin/sh", "/seguridad/mongo_tls.sh"]
     environment:
+      <<: *roles-sede
       MONGO_INITDB_ROOT_USERNAME: ${POSTGRES_USER:-clinica_user}
       MONGO_INITDB_ROOT_PASSWORD: ${POSTGRES_PASSWORD:-clinica_pass_2026}
       MONGO_INITDB_DATABASE: ${DB_NAME_SEDE2:-clinica_cartagena}
-    ports:
-      - "${MONGO_PORT_SEDE2:-27018}:27017"
+    networks: [red_datos]
     volumes:
       - mongo_data_sede2:/data/db
+      - ./certs:/certs:ro
+      - ./db/seguridad:/seguridad:ro
       - ./db/sede2/init-mongo.js:/docker-entrypoint-initdb.d/01_init.js:ro
+      - ./db/seguridad/mongo_roles.js:/docker-entrypoint-initdb.d/02_roles.js:ro
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test: ["CMD", "sh", "/seguridad/mongo_salud.sh"]
       interval: 5s
       timeout: 5s
       retries: 15
@@ -71,69 +93,70 @@ services:
 
   # ── Sede 3: Corozal · PostgreSQL ────────────────────────────────────────
   pg_sede3:
-    image: postgres:16-alpine
+    <<: *pg
     container_name: pg_sede3
     environment:
-      <<: *credenciales
+      <<: [*credenciales, *roles-sede]
       POSTGRES_DB: ${DB_NAME_SEDE3:-clinica_corozal}
-    ports:
-      - "${DB_PORT_SEDE3:-5435}:5432"
+      TLS_NOMBRE: pg_sede3
     volumes:
       - pg_data_sede3:/var/lib/postgresql/data
+      - ./certs:/certs:ro
+      - ./db/seguridad:/seguridad:ro
       - ./db/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
       - ./db/sede3/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
+      - ./db/seguridad/roles_sede.sh:/docker-entrypoint-initdb.d/02_roles.sh:ro
 
-  # ── Base central: cadena de auditoría (no es una sede) ──────────────────
+  # ── Base central: auditoría, cuentas, refresh tokens y base de HAPI ─────
   pg_central:
-    image: postgres:16-alpine
+    <<: *pg
     container_name: pg_central
     environment:
       <<: *credenciales
       POSTGRES_DB: clinica_central
-    ports:
-      - "${DB_PORT_CENTRAL:-5436}:5432"
+      TLS_NOMBRE: pg_central
+      API_CENTRAL_DB_PASSWORD: ${API_CENTRAL_DB_PASSWORD:-api_central_pass_2026}
+      HAPI_DB_PASSWORD: ${HAPI_DB_PASSWORD:-hapi_pass_2026}
     volumes:
       - pg_data_central:/var/lib/postgresql/data
+      - ./certs:/certs:ro
+      - ./db/seguridad:/seguridad:ro
       - ./db/central/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d clinica_central"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
+      - ./db/seguridad/roles_central.sh:/docker-entrypoint-initdb.d/02_roles.sh:ro
 
-  # ── Servidor HAPI FHIR R4 (:8090) ───────────────────────────────────────
-  # La imagen no trae shell ni curl, así que no lleva healthcheck propio:
-  # su estado lo reportan /health del HSB y de la API.
+  # ── Servidor HAPI FHIR R4 (HTTPS; publicado solo en 127.0.0.1:8090) ─────
+  # La imagen no trae shell ni curl: su estado lo reportan /health del HSB y de la API.
   hapi-fhir:
     image: hapiproject/hapi:v7.2.0
     container_name: hapi_fhir_r4
     ports:
-      - "${HAPI_PORT:-8090}:8080"
+      - "127.0.0.1:${HAPI_PORT:-8090}:8080"
     environment:
       hapi.fhir.fhir_version: R4
-      hapi.fhir.server_address: http://localhost:8090/fhir
+      hapi.fhir.server_address: https://localhost:8090/fhir
       JAVA_TOOL_OPTIONS: "-Xms256m -Xmx768m"
-      # Persistencia: sin esto HAPI usa H2 en memoria y pierde todo al reiniciarse.
-      # Guarda sus recursos en la base "hapi" de pg_central.
-      spring.datasource.url: jdbc:postgresql://pg_central:5432/hapi
-      spring.datasource.username: ${POSTGRES_USER:-clinica_user}
-      spring.datasource.password: ${POSTGRES_PASSWORD:-clinica_pass_2026}
+      # HTTPS con el certificado de la CA de la plataforma
+      server.ssl.enabled: "true"
+      server.ssl.key-store: file:/certs/hapi.p12
+      server.ssl.key-store-type: PKCS12
+      server.ssl.key-store-password: ${HAPI_KEYSTORE_PASSWORD:-hapi_keystore_2026}
+      server.ssl.key-alias: hapi
+      # Persistencia en la base "hapi" de pg_central, con su propio rol y por TLS
+      spring.datasource.url: jdbc:postgresql://pg_central:5432/hapi?sslmode=require
+      spring.datasource.username: hapi_srv
+      spring.datasource.password: ${HAPI_DB_PASSWORD:-hapi_pass_2026}
       spring.datasource.driverClassName: org.postgresql.Driver
       spring.jpa.properties.hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
       spring.jpa.properties.hibernate.search.enabled: "false"
+    volumes:
+      - ./certs:/certs:ro
+    networks: [red_datos, red_servicios]
     depends_on:
       pg_central:
         condition: service_healthy
     restart: unless-stopped
 
-  # ── Health Service Bus (:8001) ──────────────────────────────────────────
+  # ── Health Service Bus (HTTPS :8001, exige token OAuth 2.0) ─────────────
   hsb:
     build:
       context: .
@@ -142,11 +165,22 @@ services:
     ports:
       - "${HSB_PORT:-8001}:8001"
     environment:
-      <<: *conexiones-sedes
+      <<: *sedes
+      # El bus entra a las sedes como hsb_escritor (lee, inserta y actualiza; no borra)
+      SEDES_DB_USER: hsb_escritor
+      SEDES_DB_PASSWORD: ${HSB_DB_PASSWORD:-hsb_pass_2026}
+      MONGO_URL_SEDE2: mongodb://hsb_escritor:${HSB_DB_PASSWORD:-hsb_pass_2026}@mongo_sede2:27017/?authSource=${DB_NAME_SEDE2:-clinica_cartagena}
+      TLS_CERT_FILE: /certs/hsb.crt
+      TLS_KEY_FILE: /certs/hsb.key
+      HSB_REQUIERE_TOKEN: "true"
+      OAUTH_JWKS_URL: https://api:8000/oauth/jwks
+      OAUTH_CLAVE_PUBLICA: /certs/oauth_firma.pub
       # Reintentos: 2 s, 4 s, 8 s, 16 s, 32 s, 64 s (~2 min) antes de pasar a MUERTO.
-      # Da tiempo a que HAPI vuelva tras "docker compose start hapi-fhir".
       HSB_MAX_RETRIES: ${HSB_MAX_RETRIES:-7}
       HSB_RETRY_BASE_SECONDS: ${HSB_RETRY_BASE_SECONDS:-2}
+    volumes:
+      - ./certs:/certs:ro
+    networks: [red_datos, red_servicios]
     depends_on:
       hapi-fhir:
         condition: service_started
@@ -158,7 +192,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ── API Gateway y vistas por rol (:8000) ────────────────────────────────
+  # ── API Gateway, vistas por rol y servidor OAuth 2.0 (HTTPS :8000) ──────
   api:
     build:
       context: .
@@ -167,15 +201,32 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
     environment:
-      <<: *conexiones-sedes
-      JWT_SECRET: ${JWT_SECRET:-CAMBIAR_EN_.env_SECRETO_SOLO_PARA_DESARROLLO}
-      JWT_ALGORITHM: HS256
-      JWT_EXPIRE_MINUTES: "60"
-      HSB_URL: http://hsb:8001
-      HSB_METRICS_URL: http://hsb:8001/metrics
+      <<: *sedes
+      # La API solo LEE las sedes (api_lector); las escrituras van por el bus
+      SEDES_DB_USER: api_lector
+      SEDES_DB_PASSWORD: ${API_DB_PASSWORD:-api_pass_2026}
+      MONGO_URL_SEDE2: mongodb://api_lector:${API_DB_PASSWORD:-api_pass_2026}@mongo_sede2:27017/?authSource=${DB_NAME_SEDE2:-clinica_cartagena}
       AUDIT_DB_HOST: pg_central
       AUDIT_DB_PORT: "5432"
       AUDIT_DB_NAME: clinica_central
+      AUDIT_DB_USER: api_central
+      AUDIT_DB_PASSWORD: ${API_CENTRAL_DB_PASSWORD:-api_central_pass_2026}
+      TLS_CERT_FILE: /certs/api.crt
+      TLS_KEY_FILE: /certs/api.key
+      HSB_URL: https://hsb:8001
+      HSB_METRICS_URL: https://hsb:8001/metrics
+      # OAuth 2.0: clave de firma RS256 y secretos de los clientes registrados
+      OAUTH_CLAVE_PRIVADA: /certs/oauth_firma.key
+      OAUTH_TTL_ACCESO_MIN: "60"
+      OAUTH_SECRETO_PORTAL: ${OAUTH_SECRETO_PORTAL:-portal_web_secreto_2026}
+      OAUTH_SECRETO_API: ${OAUTH_SECRETO_API:-api_gateway_secreto_2026}
+      OAUTH_SECRETO_SEDE1: ${OAUTH_SECRETO_SEDE1:-sede1_secreto_2026}
+      OAUTH_SECRETO_SEDE2: ${OAUTH_SECRETO_SEDE2:-sede2_secreto_2026}
+      OAUTH_SECRETO_SEDE3: ${OAUTH_SECRETO_SEDE3:-sede3_secreto_2026}
+      OAUTH_SECRETO_QA: ${OAUTH_SECRETO_QA:-qa_secreto_2026}
+    volumes:
+      - ./certs:/certs:ro
+    networks: [red_datos, red_servicios]
     depends_on:
       hsb:
         condition: service_started
@@ -188,6 +239,13 @@ services:
       pg_sede3:
         condition: service_healthy
     restart: unless-stopped
+
+networks:
+  # Interna: las bases no tienen salida a internet ni puertos en el anfitrión.
+  red_datos:
+    internal: true
+  # Servicios publicados (API, bus y HAPI en localhost).
+  red_servicios:
 
 volumes:
   pg_data_sede1:

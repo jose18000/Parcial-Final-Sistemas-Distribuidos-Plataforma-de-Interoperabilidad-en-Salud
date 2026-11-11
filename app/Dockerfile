@@ -18,10 +18,12 @@ COPY app /app/app
 COPY db /app/db
 COPY fhir /app/fhir
 COPY traductor /app/traductor
+COPY seguridad /app/seguridad
 COPY ejemplos /app/ejemplos
 
 ENV PYTHONPATH=/app
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# HTTPS con el certificado de /certs si TLS_ACTIVO=true (seguridad/servidor.py)
+CMD ["python", "-m", "seguridad.servidor", "app.main:app", "8000"]
 

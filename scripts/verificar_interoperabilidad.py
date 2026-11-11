@@ -11,7 +11,10 @@ Solo usa la biblioteca estándar. Crea pacientes sintéticos nuevos en cada ejec
 """
 
 import argparse
+import base64
 import datetime
+import os
+import ssl
 import http.cookiejar
 import json
 import random
@@ -25,7 +28,12 @@ AP.add_argument("--api", default="http://localhost:8000")
 AP.add_argument("--hsb", default="http://localhost:8001")
 AP.add_argument("--fhir", default="http://localhost:8090/fhir")
 AP.add_argument("--salida", default="docs/evidencias/07_verificacion_por_sede.md")
+AP.add_argument("--ca", default="certs/ca.pem", help="CA de la plataforma para verificar HTTPS")
+AP.add_argument("--secreto-qa", default=os.getenv("OAUTH_SECRETO_QA", "qa_secreto_2026"))
+AP.add_argument("--secreto-sede1", default=os.getenv("OAUTH_SECRETO_SEDE1", "sede1_secreto_2026"))
 A = AP.parse_args()
+# HTTPS verificado contra la CA propia (si existe); sin CA se usa la verificación normal del sistema.
+CTX = ssl.create_default_context(cafile=A.ca) if os.path.exists(A.ca) else ssl.create_default_context()
 
 MOTOR = {1: "PostgreSQL", 2: "MongoDB", 3: "PostgreSQL"}
 CIUDAD = {1: "Sincelejo", 2: "Cartagena", 3: "Corozal"}
@@ -38,11 +46,17 @@ def anotar(sede, seccion, comprobacion, ok, detalle=""):
 
 
 class Cliente:
-    def __init__(self):
-        self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    def __init__(self, token=None, basic=None):
+        self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
+                                              urllib.request.HTTPSHandler(context=CTX))
+        self.token, self.basic = token, basic
 
     def pedir(self, metodo, url, datos=None, tipo=None, form=None):
         cab = {"Accept": "application/json"}
+        if self.token:
+            cab["Authorization"] = f"Bearer {self.token}"
+        elif self.basic:
+            cab["Authorization"] = "Basic " + base64.b64encode(f"{self.basic[0]}:{self.basic[1]}".encode()).decode()
         if form is not None:
             datos = urllib.parse.urlencode(form).encode()
             cab["Content-Type"] = "application/x-www-form-urlencoded"
@@ -101,7 +115,15 @@ def fhir_existe(ruta):
     return st == 200
 
 
-hsb, admin = Cliente(), login("admin_plataforma", "Admin123!")
+def token_cliente(client_id, secreto):
+    """OAuth 2.0 client_credentials contra la API (RFC 6749 §4.4)."""
+    st, r = Cliente(basic=(client_id, secreto)).json("POST", f"{A.api}/oauth/token",
+                                                     form={"grant_type": "client_credentials"})
+    return r.get("access_token") if st == 200 else None
+
+
+TOKEN_QA = token_cliente("herramientas_qa", A.secreto_qa)
+hsb, admin = Cliente(token=TOKEN_QA), login("admin_plataforma", "Admin123!")
 medico, admision = login("medico_mateo", "Medico123!"), login("admision_laura", "Admision123!")
 semilla = int(time.time())
 doc_red = doc_nuevo()             # paciente que se atiende en las 3 sedes
@@ -219,6 +241,26 @@ cob = m.get("cobertura_fhir_por_sede", {})
 for s in (1, 2, 3):
     anotar(f"Sede {s} · {CIUDAD[s]} ({MOTOR[s]})", "Cobertura FHIR", "Pacientes de la sede publicados en FHIR",
            cob.get(f"sede_{s}") == 100.0, f"{cob.get(f'sede_{s}')} %")
+# ── Seguridad: OAuth 2.0 en el bus y canal cifrado ─────────────────────────
+anotar(R, "OAuth 2.0", "client_credentials emite token para el bus", bool(TOKEN_QA))
+st, r = Cliente(basic=("herramientas_qa", "secreto-falso")).json("POST", f"{A.api}/oauth/token",
+                                                                 form={"grant_type": "client_credentials"})
+anotar(R, "OAuth 2.0", "Secreto de cliente incorrecto = 401 invalid_client", st == 401 and r.get("error") == "invalid_client", st)
+st, _ = Cliente().json("POST", f"{A.hsb}/hsb/hl7", datos=adt(1, doc_nuevo(), "V-S1-SINTOKEN", f"VER-{semilla}-SINTOKEN"))
+anotar(R, "OAuth 2.0", "Bus sin token = 401", st == 401, st)
+st, tu = Cliente().json("POST", f"{A.api}/oauth/token", form={"grant_type": "password", "username": "medico_mateo",
+                        "password": "Medico123!", "client_id": "herramientas_qa", "client_secret": A.secreto_qa})
+st, _ = Cliente(token=tu.get("access_token")).json("POST", f"{A.hsb}/hsb/csv?sede=1", datos="x", tipo="text/csv")
+anotar(R, "OAuth 2.0", "Token de usuario (audiencia api) rechazado por el bus = 401", st == 401, st)
+st, _ = Cliente(token=token_cliente("sistema_sede1", A.secreto_sede1)).json("POST", f"{A.hsb}/hsb/csv?sede=3",
+                                                                            datos="x", tipo="text/csv")
+anotar(R, "OAuth 2.0", "Sistema de la sede 1 no puede escribir en la sede 3 = 403", st == 403, st)
+st, _ = Cliente().json("GET", f"{A.hsb}/hsb/mensajes")
+anotar(R, "OAuth 2.0", "Monitor de mensajes sin token = 401", st == 401, st)
+cifrado = all(u.startswith("https://") for u in (A.api, A.hsb, A.fhir)) and os.path.exists(A.ca)
+anotar(R, "Cifrado en tránsito", "API, bus y FHIR por HTTPS verificado con la CA propia", cifrado,
+       "https + certs/ca.pem" if cifrado else "sin HTTPS")
+
 st, hs = Cliente().json("GET", f"{A.hsb}/health")
 anotar(R, "Salud", "Bus, HAPI y las 3 sedes UP", hs.get("status") == "UP", json.dumps(hs.get("dependencias", {}).get("sedes", {})))
 

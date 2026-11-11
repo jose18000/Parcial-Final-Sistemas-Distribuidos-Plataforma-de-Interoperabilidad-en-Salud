@@ -1,6 +1,6 @@
 """
 app/auth.py
-Módulo de Autenticación JWT y Gestión de Identidades por Rol.
+Autenticación de usuarios: tokens OAuth 2.0 (JWT RS256) emitidos por app/oauth.py.
 
 Roles soportados: paciente, admisionista, medico, auditor.
 """
@@ -11,8 +11,8 @@ import datetime
 from typing import Optional, Dict, Any
 from jose import jwt, JWTError
 
-JWT_SECRET = os.getenv("JWT_SECRET", "CLINICA_DISTRIBUIDA_SECRET_TOKEN_KEY_2026_HS256_UNSECURED_DEV_ONLY")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+# Desde la v3 los tokens son RS256 y los emite el servidor OAuth 2.0 (app/oauth.py).
+JWT_ALGORITHM = "RS256"
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 
 # Base de datos de usuarios de prueba (contraseñas con hash SHA-256 + salt simple)
@@ -80,17 +80,19 @@ def autenticar_usuario(username: str, password: str) -> Optional[Dict[str, Any]]
 
 
 def crear_token_jwt(datos: Dict[str, Any], expira_minutos: int = JWT_EXPIRE_MINUTES) -> str:
-    payload = datos.copy()
-    exp = datetime.datetime.utcnow() + datetime.timedelta(minutes=expira_minutos)
-    payload.update({"exp": exp, "iat": datetime.datetime.utcnow()})
-    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    return token
+    """
+    Token de acceso de un usuario: JWT RS256 emitido por el servidor OAuth 2.0 (app/oauth.py),
+    con emisor, audiencia "api", scopes de su rol, jti y expiración.
+    """
+    from app import oauth
+    usr = {**datos, "username": datos.get("username") or datos.get("sub")}
+    return oauth.token_de_usuario(usr, client_id="portal_web")["access_token"]
 
 
 def decodificar_token_jwt(token: str) -> Optional[Dict[str, Any]]:
+    """Verifica firma RS256, emisor, audiencia ("api") y vencimiento. None si algo no cuadra."""
+    from app import oauth
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return payload
+        return oauth.verificar(token, audiencia="api")
     except JWTError:
         return None
-
