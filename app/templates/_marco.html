@@ -1,0 +1,93 @@
+{#- Marco común de todas las pantallas: barra superior (marca, navegación por rol, menú del usuario) y pie.
+    Uso:  {% import '_marco.html' as marco %}
+          {{ marco.cabecera(usuario, 'medico', buscar_doc) }} … {{ marco.pie() }}  -#}
+{% macro _ico(n) -%}
+  {%- set P = {
+    'historia': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15h6"/>',
+    'imprimir': '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/>',
+    'mas': '<path d="M12 5v14M5 12h14"/>',
+    'pulso': '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+    'actividad': '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+    'usuarios': '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+    'barras': '<path d="M3 3v18h18M7 16v-4M11 16V8M15 16v-6M19 16V5"/>',
+    'salir': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    'llave': '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3M14.5 8.5l2 2"/>',
+    'abajo': '<path d="m6 9 6 6 6-6"/>'
+  } -%}
+  <svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{{ P[n]|safe }}</svg>
+{%- endmacro %}
+
+{% macro rol_texto(u) -%}
+  {%- set u = u or {} -%}
+  {%- set R = {'paciente': 'Paciente', 'admisionista': 'Admisionista', 'medico': 'Médico', 'auditor': 'Auditor', 'administrador': 'Administrador'} -%}
+  {{- R.get(u.rol, (u.rol or 'Usuario')|string|capitalize) -}}
+  {%- if u.rol == 'paciente' -%}{%- if u.documento_id %} · Doc. {{ u.documento_id }}{% endif -%}
+  {%- elif u.sede_id is not none and u.sede_id is defined and u.sede_id != '' %} · Sede {{ u.sede_id }}{%- endif -%}
+{%- endmacro %}
+
+{% macro iniciales(nombre) -%}
+  {%- set pp = ((nombre or '')|string).split() or ['?'] -%}
+  {{- ((pp[0][:1]) ~ (pp[1][:1] if pp|length > 1 else ''))|upper -}}
+{%- endmacro %}
+
+{% macro cabecera(usuario, activo='', buscar_doc=none, minimo=false) -%}
+  {%- set u = usuario or {} -%}
+  {%- set rol = u.rol or '' -%}
+  {%- set dq = (buscar_doc or '')|string|urlencode -%}
+  {%- set inicio = {'paciente': '/paciente', 'admisionista': '/admision', 'medico': '/medico', 'auditor': '/panel', 'administrador': '/panel'}.get(rol, '/login') -%}
+  {%- if rol == 'paciente' -%}
+    {%- set items = [('historia', '/paciente', 'Mi historia', 'historia'), ('reporte', '/reporte', 'Mi reporte', 'imprimir')] -%}
+  {%- elif rol == 'admisionista' -%}
+    {%- set items = [('admision', '/admision', 'Admisiones', 'mas')] -%}
+  {%- elif rol == 'medico' -%}
+    {%- set items = [('medico', '/medico' ~ ('?buscar_doc=' ~ dq if dq else ''), 'Consulta médica', 'pulso'),
+                     ('reporte', '/reporte' ~ ('?buscar_doc=' ~ dq if dq else ''), 'Reporte de HC', 'imprimir')] -%}
+  {%- elif rol in ('auditor', 'administrador') -%}
+    {%- set items = [('panel', '/panel', 'Administración', 'actividad'), ('usuarios', '/panel#usuarios', 'Usuarios', 'usuarios'),
+                     ('reporte', '/reporte?buscar_doc=' ~ dq ~ '&pestana=reporte', 'Reporte de HC', 'historia'),
+                     ('tablero', '/reporte?buscar_doc=' ~ dq ~ '&pestana=tablero', 'Estado', 'barras')] -%}
+  {%- else -%}
+    {%- set items = [] -%}
+  {%- endif %}
+  <a class="saltar" href="#contenido">Saltar al contenido</a>
+  <header class="topbar">
+    <div class="topbar-in">
+      <a class="marca" href="{{ '/cambiar-clave' if minimo else inicio }}" aria-label="Historia Clínica Electrónica · inicio">
+        <img src="/static/logo.svg" alt="" width="38" height="38">
+        <span class="marca-texto"><strong>Historia Clínica Electrónica</strong><small>Red de IPS Sincelejo · Cartagena · Corozal</small></span>
+      </a>
+      {% if items and not minimo %}
+      <nav class="nav" aria-label="Navegación principal">
+        <ul>
+          {% for clave, href, texto, icono in items %}
+          <li><a href="{{ href }}"{% if clave == activo %} aria-current="page"{% endif %} data-nav="{{ clave }}">{{ _ico(icono) }}{{ texto }}</a></li>
+          {% endfor %}
+        </ul>
+      </nav>
+      {% endif %}
+      {% if minimo %}
+      <div class="usuario-chip">
+        <span class="avatar" aria-hidden="true">{{ iniciales(u.nombre_completo or u.username) }}</span>
+        <span class="usuario-datos"><strong>{{ u.nombre_completo or u.username or 'Usuario' }}</strong><small>{{ rol_texto(u) }}</small></span>
+        <a href="/auth/logout" class="btn-salir">{{ _ico('salir') }}Cerrar sesión</a>
+      </div>
+      {% else %}
+      <details class="usuario-menu">
+        <summary class="usuario-chip">
+          <span class="avatar" aria-hidden="true">{{ iniciales(u.nombre_completo or u.username) }}</span>
+          <span class="usuario-datos"><strong>{{ u.nombre_completo or u.username or 'Usuario' }}</strong><small>{{ rol_texto(u) }}</small></span>
+          <span class="usuario-flecha">{{ _ico('abajo') }}<span class="sr-only">Opciones de la cuenta</span></span>
+        </summary>
+        <ul class="usuario-menu-lista">
+          <li><a href="/cambiar-clave"{% if activo == 'clave' %} aria-current="page"{% endif %}>{{ _ico('llave') }}Cambiar contraseña</a></li>
+          <li><a href="/auth/logout" class="salir">{{ _ico('salir') }}Cerrar sesión</a></li>
+        </ul>
+      </details>
+      {% endif %}
+    </div>
+  </header>
+{%- endmacro %}
+
+{% macro pie() -%}
+  <footer class="pie-pagina"><span>Red de IPS Sincelejo · Cartagena · Corozal</span><span>© 2026 · Historia Clínica Electrónica</span></footer>
+{%- endmacro %}

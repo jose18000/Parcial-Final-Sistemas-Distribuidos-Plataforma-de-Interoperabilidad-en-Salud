@@ -3,243 +3,408 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Módulo de Admisión y Triage · Red de IPS</title>
-  <style>
-    :root {
-      --bg: #f8f9fa;
-      --card-bg: #ffffff;
-      --text: #212529;
-      --primary: #28a745;
-      --border: #dee2e6;
-    }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      margin: 0;
-      padding: 1.5rem;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--card-bg);
-      padding: 1rem 1.5rem;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-bottom: 1.5rem;
-    }
-    .badge {
-      background: #d4edda;
-      color: #155724;
-      padding: 0.35rem 0.75rem;
-      border-radius: 12px;
-      font-weight: 600;
-    }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-    h2 {
-      margin-top: 0;
-      color: #155724;
-      border-bottom: 2px solid #e9ecef;
-      padding-bottom: 0.5rem;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1rem;
-    }
-    label {
-      font-weight: 600;
-      font-size: 0.9rem;
-      display: block;
-      margin-bottom: 0.25rem;
-    }
-    input, select {
-      width: 100%;
-      padding: 0.6rem;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      box-sizing: border-box;
-    }
-    .btn {
-      padding: 0.6rem 1.2rem;
-      background: var(--primary);
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: 600;
-    }
-    .btn:hover { background: #218838; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 1rem;
-    }
-    th, td {
-      border: 1px solid var(--border);
-      padding: 0.6rem;
-      text-align: left;
-    }
-    th { background: #f1f3f5; }
-    .alerta-info {
-      background: #d1ecf1;
-      color: #0c5460;
-      padding: 0.75rem;
-      border-radius: 4px;
-      margin-bottom: 1rem;
-    }
-  </style>
+  <meta name="color-scheme" content="light dark">
+  <title>Admisiones · Historia Clínica Electrónica</title>
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
+  <link rel="stylesheet" href="/static/plataforma.css">
+  <script src="/static/plataforma.js" defer></script>
 </head>
-<body>
-  <header class="header">
-    <div>
-      <h1 style="margin:0; font-size: 1.4rem;">Módulo de Admisión y Registro de Atenciones</h1>
-      <small>Usuario: <strong>{{ usuario.nombre_completo }}</strong> · Sede Actual: {{ usuario.sede_id or 'Cartagena' }}</small>
-    </div>
-    <div>
-      <span class="badge">Rol: Admisionista</span>
-      <a href="/auth/logout" class="btn" style="background:#dc3545; margin-left: 0.5rem;">Cerrar Sesión</a>
-    </div>
-  </header>
+<body data-rol="admisionista">
+{% import '_marco.html' as marco %}
+{# ── Ayudas de presentación ───────── #}
+{% macro ico(n, cls='') -%}
+  {%- set P = {
+    'db': '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+    'hoja': '<path d="M12 2c4 4 6 8 5 12-1 3-3 5-5 6-2-1-4-3-5-6-1-4 1-8 5-12zM12 7v15"/>',
+    'check': '<path d="M20 6 9 17l-5-5"/>',
+    'alerta': '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>',
+    'x': '<path d="M18 6 6 18M6 6l12 12"/>',
+    'info': '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+    'escudo': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    'escudo-ok': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+    'salir': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    'buscar': '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+    'descargar': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    'imprimir': '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/>',
+    'actividad': '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+    'servidor': '<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/>',
+    'reloj': '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    'bus': '<path d="M4 7h11M4 12h16M4 17h11"/><path d="m17 4 3 3-3 3M13 14l3 3-3 3"/>',
+    'candado': '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    'usuario': '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    'capas': '<path d="m12 2 10 5-10 5L2 7zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
+    'historia': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15h6"/>',
+    'ojo': '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>',
+    'pulso': '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+    'mas': '<path d="M12 5v14M5 12h14"/>',
+    'red': '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M7 7.5 10.5 17M17 7.5 13.5 17M7.5 6h9"/>',
+    'medicamento': '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7zM8.5 8.5l7 7"/>',
+    'salida': '<path d="M5 12h14M12 5l7 7-7 7"/>'
+  } -%}
+  <svg class="ico {{ cls }}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{{ P[n]|safe }}</svg>
+{%- endmacro %}
+{% macro etq(dominio, v) -%}
+  {%- if v is none or v == '' -%}—
+  {%- elif DOMINIOS.get(dominio) -%}{{ DOMINIOS[dominio]['codigos'].get(v|string, v) }}
+  {%- else -%}{{ v }}{%- endif -%}
+{%- endmacro %}
+{% macro fecha(f) -%}{{ (f|string)[:16]|replace('T', ' ') if f else '—' }}{%- endmacro %}
+{% macro motor(m) -%}
+  {%- if m == 'mongodb' -%}<span class="badge b-mongo">{{ ico('hoja') }}MongoDB</span>
+  {%- elif m == 'postgresql' -%}<span class="badge b-pg">{{ ico('db') }}PostgreSQL</span>
+  {%- else -%}<span class="badge b-neutro">{{ m or 'motor —' }}</span>{%- endif -%}
+{%- endmacro %}
+{% macro iniciales(nombre) -%}
+  {%- set pp = ((nombre or '')|string).split() or ['?'] -%}
+  {{- ((pp[0][:1]) ~ (pp[1][:1] if pp|length > 1 else ''))|upper -}}
+{%- endmacro %}
+{% macro chip_sello(h) -%}
+  {%- if h -%}<span class="sello-chip corto" data-copiar="{{ h }}">{{ ico('candado') }}<code>{{ h }}</code></span>{%- else -%}—{%- endif -%}
+{%- endmacro %}
+{% macro triage(v) -%}
+  {%- if v is not defined or v is none or v == '' -%}—{%- else -%}<span class="triage triage-{{ v }}">{{ etq('clasificacion_triage', v) }}</span>{%- endif -%}
+{%- endmacro %}
+{% macro estado_msg(e) -%}
+  {%- set eu = (e or '')|upper -%}
+  <span class="badge punto {{ 'est-' ~ eu|lower if eu in ('RECIBIDO', 'VALIDADO', 'TRANSFORMADO', 'ENTREGADO', 'RECHAZADO', 'REINTENTANDO', 'DUPLICADO', 'MUERTO') else 'b-neutro' }}">{{ eu or '—' }}</span>
+{%- endmacro %}
+{% macro opciones(dominio, actual, vacio='— Seleccione —') -%}
+  {%- if vacio %}<option value="">{{ vacio }}</option>{% endif -%}
+  {%- for cod, et in DOMINIOS[dominio]['codigos'].items() %}<option value="{{ cod }}"{{ ' selected' if actual is not none and actual|string == cod|string }}>{{ cod }} · {{ et }}</option>{% endfor -%}
+{%- endmacro %}
+{% macro entrada(num, nombre, etiqueta, valor='', tipo='text', req=false, pattern=none, placeholder=none, inputmode=none, maxlength=none, autocomplete=none, ayuda=none) -%}
+  <div class="campo">
+    <label for="f_{{ nombre }}">{{ etiqueta }}{% if req %} <span class="req" aria-hidden="true">*</span>{% endif %}</label>
+    <input type="{{ tipo }}" id="f_{{ nombre }}" name="{{ nombre }}" value="{{ valor if valor is not none else '' }}"
+      {%- if req %} required{% endif %}
+      {%- if pattern %} pattern="{{ pattern }}"{% endif %}
+      {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}
+      {%- if inputmode %} inputmode="{{ inputmode }}"{% endif %}
+      {%- if maxlength %} maxlength="{{ maxlength }}"{% endif %}
+      {%- if autocomplete %} autocomplete="{{ autocomplete }}"{% endif %}
+      {%- if ayuda %} aria-describedby="f_{{ nombre }}_ayuda"{% endif %}>
+    {% if ayuda %}<small id="f_{{ nombre }}_ayuda">{{ ayuda }}</small>{% endif %}
+  </div>
+{%- endmacro %}
+{% macro lista(num, nombre, etiqueta, dominio, actual, req=false, vacio='— Seleccione —') -%}
+  <div class="campo">
+    <label for="f_{{ nombre }}">{{ etiqueta }}{% if req %} <span class="req" aria-hidden="true">*</span>{% endif %}</label>
+    <select id="f_{{ nombre }}" name="{{ nombre }}"{{ ' required' if req }}>{{ opciones(dominio, actual, vacio) }}</select>
+  </div>
+{%- endmacro %}
 
-  <main>
-    <div class="alerta-info" role="status">
-      ℹ️ <strong>Mínimo Privilegio Activo:</strong> Como personal de admisión puede buscar pacientes, validar duplicados entre sedes y abrir atenciones con triage. Los diagnósticos clínicos están protegidos y no son visibles en esta vista.
+{% macro credenciales_portal(cp) -%}
+  {%- if cp is mapping and cp.username -%}
+  <div class="credenciales">
+    {%- if cp.clave_temporal %}
+    <h3>Cuenta del portal del paciente</h3>
+    <dl class="datos">
+      <div><dt>Usuario</dt><dd><span class="sello-chip corto" data-copiar="{{ cp.username }}" data-copiar-etq="usuario">{{ ico('usuario') }}<code>{{ cp.username }}</code></span></dd></div>
+      <div><dt>Contraseña temporal</dt><dd><span class="sello-chip corto" data-copiar="{{ cp.clave_temporal }}" data-copiar-etq="contraseña temporal">{{ ico('candado') }}<code>{{ cp.clave_temporal }}</code></span></dd></div>
+    </dl>
+    <p class="credenciales-nota">{{ ico('info') }}Se pedirá cambiarla al primer ingreso. Esta contraseña se muestra una sola vez.</p>
+    {%- elif cp.error %}
+    <p class="credenciales-nota">{{ ico('alerta') }}No se pudo crear la cuenta del portal del paciente: {{ cp.error }}</p>
+    {%- else %}
+    <p class="credenciales-nota">{{ ico('usuario') }}Cuenta del portal del paciente: usuario <code>{{ cp.username }}</code> (ya existente).</p>
+    {%- endif %}
+  </div>
+  {%- endif -%}
+{%- endmacro %}
+
+  {{ marco.cabecera(usuario, 'admision') }}
+
+  {% set sede_u = usuario.sede_id if usuario and usuario.sede_id in SEDES else none %}
+  <div class="encabezado">
+    <div class="encabezado-in">
+      <div>
+        <span class="cejilla">{{ ico('mas') }} Admisiones</span>
+        <h1>Admisión de pacientes</h1>
+        <p>{{ usuario.nombre_completo or usuario.username }}{% if sede_u %} · {{ SEDES[sede_u]['nombre'] }}{% endif %}</p>
+      </div>
     </div>
+  </div>
 
-    <!-- Búsqueda y Detección de Paciente en Sedes -->
-    <section class="card">
-      <h2>1. Búsqueda y Validación de Paciente en las 3 Sedes</h2>
-      <form method="GET" action="/admision" style="display:flex; gap:0.5rem; align-items:flex-end;">
-        <div style="flex-grow:1;">
-          <label for="buscar_doc">Número de Documento del Paciente:</label>
-          <input type="text" id="buscar_doc" name="buscar_doc" value="{{ buscar_doc or '' }}" placeholder="Ej. 1001" required>
-        </div>
-        <button type="submit" class="btn">Buscar en Sedes</button>
-      </form>
-
-      {% if resultado_busqueda %}
-      <div style="margin-top:1.5rem; padding:1rem; background:#fdfdfe; border:1px solid #ced4da; border-radius:4px;">
-        <h3>Resultado de Identidad Federada:</h3>
-        {% if resultado_busqueda.paciente %}
-          <p><strong>Paciente Encontrado:</strong> {{ resultado_busqueda.paciente.nombre_completo }} (Doc: {{ resultado_busqueda.paciente.documento_id }})</p>
-          <p><strong>Sedes donde ya tiene expediente:</strong>
-            {% for s in resultado_busqueda.sedes_disponibles %}
-              <span style="background:#cfe2ff; padding:0.2rem 0.5rem; border-radius:3px;">Sede {{ s }}</span>
-            {% endfor %}
-          </p>
-          <p style="color:#28a745;">✓ El paciente ya existe en el sistema federado. Puede abrir una nueva atención sin duplicar datos demográficos.</p>
-        {% else %}
-          <p style="color:#e67e22;">⚠️ Paciente no encontrado en las sedes. Proceda a registrarlo en el formulario inferior.</p>
+  <main id="contenido" class="contenedor">
+    {# ── Resultado de la última admisión ── #}
+    {% if respuesta_hsb %}
+    {% set est = (respuesta_hsb.estado or 'error')|string|lower %}
+    {% set clase = 'ok' if est == 'entregado' else ('warn' if est in ('reintentando', 'duplicado') else 'err') %}
+    {% set motivos = respuesta_hsb.motivos or ([respuesta_hsb.motivo] if respuesta_hsb.motivo else []) %}
+    {% set sede_r = respuesta_hsb.sede if respuesta_hsb.sede in SEDES else sede_u %}
+    {% set sede_nom = SEDES[sede_r]['nombre'] if sede_r else 'la sede' %}
+    <section class="resultado {{ clase }}" role="status" aria-labelledby="res-hsb">
+      <span class="icono">{{ ico('check' if clase == 'ok' else ('reloj' if clase == 'warn' else 'x'), 'ico-lg') }}</span>
+      <div class="resultado-cuerpo">
+        <h2 id="res-hsb">
+          {%- if est == 'entregado' %}Paciente registrado
+          {%- elif est == 'reintentando' %}En cola de reintento
+          {%- elif est == 'duplicado' %}Ya registrado
+          {%- elif est == 'rechazado' %}Rechazado{% if motivos %}: {{ motivos|join('; ') }}{% endif %}
+          {%- elif est == 'muerto' %}No entregado
+          {%- else %}No se pudo completar el registro{% endif -%}
+        </h2>
+        {% if est == 'entregado' %}<p class="resultado-sub">Atención abierta en {{ sede_nom }}</p>
+        {% elif est == 'reintentando' %}<p class="resultado-sub">Se enviará a {{ sede_nom }} cuando la sede responda.</p>
+        {% elif est not in ('rechazado', 'duplicado') and motivos %}<p class="resultado-sub">{{ motivos|join('; ') }}</p>{% endif %}
+        <dl class="datos">
+          {% if respuesta_hsb.documento %}<div><dt>Documento</dt><dd>{{ respuesta_hsb.documento }}</dd></div>{% endif %}
+          {% if respuesta_hsb.numero_visita %}<div><dt>N.º de atención</dt><dd class="mono">{{ respuesta_hsb.numero_visita }}</dd></div>{% endif %}
+          {% if respuesta_hsb.mensaje_id %}<div><dt>N.º de mensaje</dt><dd class="mono">{{ respuesta_hsb.mensaje_id }}</dd></div>{% endif %}
+          {% if respuesta_hsb.recursos_fhir %}<div><dt>FHIR</dt><dd class="mono">
+            {%- for r in respuesta_hsb.recursos_fhir %}{% if r is mapping %}{{ r.resourceType or r.tipo or '' }}{% if r.id %}/{{ r.id }}{% endif %}{% else %}{{ r }}{% endif %}{{ ' · ' if not loop.last }}{% endfor -%}
+          </dd></div>{% endif %}
+        </dl>
+        {% if respuesta_hsb.advertencias %}
+        <h3>Advertencias</h3>
+        <ul>{% for a in respuesta_hsb.advertencias %}<li>{{ a }}</li>{% endfor %}</ul>
+        {% endif %}
+        {{ credenciales_portal(respuesta_hsb.cuenta_paciente) }}
+        {% if respuesta_hsb.sello %}
+        <h3>Código de verificación</h3>
+        {{ chip_sello(respuesta_hsb.sello) }}
         {% endif %}
       </div>
-      {% endif %}
     </section>
+    {% endif %}
 
-    <!-- Formulario de Admisión y Triage -->
-    <section class="card">
-      <h2>2. Apertura de Atención y Clasificación de Triage</h2>
-      {% if mensaje_post %}
-      <div style="background:#d4edda; color:#155724; padding:0.75rem; border-radius:4px; margin-bottom:1rem;">
-        {{ mensaje_post }}
+    {# ── Búsqueda ── #}
+    <section class="card" aria-labelledby="sec-buscar">
+      <h2 id="sec-buscar">{{ ico('buscar') }}Buscar paciente</h2>
+      <form method="GET" action="/admision" class="buscador" role="search">
+        <div class="campo">
+          <label for="buscar_doc">Número de documento</label>
+          <input type="text" id="buscar_doc" name="buscar_doc" value="{{ buscar_doc or '' }}" inputmode="numeric" placeholder="Ej. 1001" required>
+        </div>
+        <button type="submit" class="btn">{{ ico('buscar') }}Buscar</button>
+      </form>
+
+      {% if resultado %}
+      {% set nd = [] %}
+      {% for x in (resultado.sedes_no_disponibles or []) %}{% set _ = nd.append(x.sede_id if x is mapping else x) %}{% endfor %}
+      {% set con = resultado.sedes_con_registros or [] %}
+      <h3 class="resultado-busqueda">Documento {{ resultado.documento_id }}:
+        {% if resultado.encontrado %}registrado en {{ con|length }} sede{{ 's' if con|length != 1 }}{% else %}sin registro{% endif %}
+      </h3>
+      <ul class="sedes" aria-label="Registro del paciente por sede">
+        {% for sid, sd in SEDES|dictsort %}
+        {% set caida = sid in nd %}
+        {% set tiene = sid in con %}
+        <li class="sede {{ 'si' if tiene else ('caida' if caida else '') }}">
+          <strong>Sede {{ sid }} · {{ sd.nombre }}</strong>
+          <span class="insignias">
+            {{ motor(sd.motor) }}
+            {% if tiene %}<span class="badge b-ok">{{ ico('check') }}Registrado</span>
+            {% elif caida %}<span class="badge b-warn">{{ ico('alerta') }}Sin conexión</span>
+            {% else %}<span class="badge b-neutro">Sin registro</span>{% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+
+      {% if nd %}
+      <div class="alerta" role="alert">
+        {{ ico('alerta') }}
+        <strong>Búsqueda incompleta.</strong> Sin conexión con
+        {% for x in resultado.sedes_no_disponibles %}{{ 'Sede ' ~ (x.sede_id if x is mapping else x) }}{% if x is mapping and x.nombre %} ({{ x.nombre }}){% endif %}{% if x is mapping and x.motivo %} — {{ x.motivo }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}.
+        Confirme los datos antes de registrar un paciente nuevo.
       </div>
       {% endif %}
 
-      <form method="POST" action="/admision/abrir-atencion">
-        <div class="grid">
-          <div>
-            <label for="documento_id">Documento Paciente:</label>
-            <input type="text" id="documento_id" name="documento_id" value="{{ buscar_doc or '' }}" required>
-          </div>
-          <div>
-            <label for="nombre_completo">Nombre Completo:</label>
-            <input type="text" id="nombre_completo" name="nombre_completo" placeholder="Ej. Carlos Perez" required>
-          </div>
-          <div>
-            <label for="fecha_nacimiento">Fecha de Nacimiento:</label>
-            <input type="date" id="fecha_nacimiento" name="fecha_nacimiento" required>
-          </div>
-          <div>
-            <label for="sexo">Sexo Biológico:</label>
-            <select id="sexo" name="sexo" required>
-              <option value="M">Masculino (M)</option>
-              <option value="F">Femenino (F)</option>
-              <option value="O">Otro (O)</option>
-            </select>
-          </div>
-          <div>
-            <label for="sede_id">Sede de Admisión:</label>
-            <select id="sede_id" name="sede_id" required>
-              <option value="1">Sede 1 - Sincelejo</option>
-              <option value="2" selected>Sede 2 - Cartagena</option>
-              <option value="3">Sede 3 - Corozal</option>
-            </select>
-          </div>
-          <div>
-            <label for="clase_atencion">Clase de Atención:</label>
-            <select id="clase_atencion" name="clase_atencion" required>
-              <option value="E">Urgencias (EMER)</option>
-              <option value="O">Ambulatoria (AMB)</option>
-              <option value="I">Hospitalización (IMP)</option>
-            </select>
-          </div>
-          <div>
-            <label for="triage">Nivel de Triage (1-5):</label>
-            <select id="triage" name="triage" required>
-              <option value="1">Triage 1 - Resucitación (Rojo)</option>
-              <option value="2">Triage 2 - Emergencia (Naranja)</option>
-              <option value="3" selected>Triage 3 - Urgencia (Amarillo)</option>
-              <option value="4">Triage 4 - Menor Urgencia (Verde)</option>
-              <option value="5">Triage 5 - No Urgente (Azul)</option>
-            </select>
-          </div>
-        </div>
-        <div style="margin-top:1.25rem;">
-          <button type="submit" class="btn">Registrar y Enviar al Bus (HSB)</button>
-        </div>
-      </form>
-    </section>
+      {% if con|length > 1 %}
+      <div class="alerta" role="alert">
+        {{ ico('alerta') }}
+        <strong>Posible duplicado:</strong> registrado en {{ con|length }} sedes. Abra la atención sobre el registro existente.
+      </div>
+      {% endif %}
+      {% if resultado.inconsistencias %}
+      <div class="alerta" role="alert">
+        {{ ico('alerta') }}
+        <strong>Datos distintos entre sedes</strong> (verifíquelos con el paciente):
+        <ul>
+          {% for inc in resultado.inconsistencias %}
+          <li>{{ inc.campo }}: {% for s, v in (inc.valores_por_sede or {}).items() %}Sede {{ s }} = «{{ v if v is not none else '—' }}»{{ '; ' if not loop.last }}{% endfor %}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
 
-    <!-- Monitor de Mensajes del Bus -->
-    <section class="card">
-      <h2>3. Monitor de Mensajes Enviados al HSB</h2>
+      {% if resultado.paciente %}
+      {% set rp = resultado.paciente %}
+      <div class="paciente-cab paciente-cab-sep">
+        <span class="avatar" aria-hidden="true">{{ iniciales(rp.nombre_completo or rp.nombres) }}</span>
+        <div class="nombre">
+          <h3>{{ rp.nombre_completo or 'Paciente sin nombre' }}</h3>
+          <div class="meta"><span>{{ etq('tipo_documento', rp.tipo_documento) if rp.tipo_documento else 'Documento' }} {{ rp.documento_id or resultado.documento_id }}</span></div>
+        </div>
+      </div>
+      <dl class="datos">
+        <div><dt>Fecha de nacimiento</dt><dd>{{ rp.fecha_nacimiento or '—' }}</dd></div>
+        <div><dt>Edad</dt><dd>{{ rp.edad if rp.edad is not none else '—' }} {{ etq('unidad_edad', rp.unidad_edad) if rp.unidad_edad else '' }}</dd></div>
+        <div><dt>Sexo</dt><dd>{{ etq('sexo', rp.sexo) }}</dd></div>
+        <div><dt>Municipio (DANE)</dt><dd>{{ rp.municipio_residencia or '—' }}</dd></div>
+        <div><dt>Dirección</dt><dd>{{ rp.direccion_residencia or '—' }}</dd></div>
+        <div><dt>Teléfono</dt><dd>{{ rp.telefono or '—' }}</dd></div>
+      </dl>
+      {% elif not resultado.encontrado %}
+      <p class="alerta-info">{{ ico('info') }}Paciente no registrado en la red.</p>
+      {% endif %}
+
+      {% if resultado.atenciones %}
+      <div class="tabla-scroll">
       <table>
+        <caption>Atenciones anteriores</caption>
         <thead>
-          <tr>
-            <th>Mensaje ID</th>
-            <th>Formato</th>
-            <th>Sede</th>
-            <th>Estado</th>
-            <th>Intentos</th>
-            <th>Hash Contenido (Idempotencia)</th>
-          </tr>
+          <tr><th scope="col">N.º de atención</th><th scope="col">Sede</th><th scope="col">Ingreso</th><th scope="col">Entorno</th><th scope="col">Triage</th><th scope="col">Entidad</th><th scope="col">Estado</th></tr>
         </thead>
         <tbody>
-          {% for m in mensajes_recientes %}
+          {% for at in resultado.atenciones %}
           <tr>
-            <td><code>{{ m.mensaje_id }}</code></td>
-            <td>{{ m.formato }}</td>
-            <td>Sede {{ m.sede_origen }}</td>
-            <td><strong>{{ m.estado }}</strong></td>
-            <td>{{ m.intentos }}</td>
-            <td><code>{{ m.hash_contenido[:16] }}...</code></td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="6" style="text-align:center; color:#777;">No hay mensajes registrados recientemente en el bus.</td>
+            <th scope="row" class="mono">{{ at.numero_visita or '—' }}</th>
+            <td>{{ at.sede_origen or ('Sede ' ~ at.sede_id) }} {{ motor(at.motor_origen) }}</td>
+            <td class="nowrap">{{ fecha(at.fecha_ingreso) }}</td>
+            <td>{{ etq('entorno_atencion', at.entorno_atencion) }}</td>
+            <td>{{ triage(at.clasificacion_triage) }}</td>
+            <td>{{ at.entidad_salud or '—' }}</td>
+            <td>{{ at.estado or '—' }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
+      {% endif %}
+      {% endif %}
+    </section>
+
+    {# ── Admisión ── #}
+    {% set p = resultado.paciente if resultado and resultado.paciente else {} %}
+    {% set partes = (p.nombre_completo or '')|string %}
+    {% set partes = partes.split() %}
+    {% set corte = 2 if partes|length >= 4 else 1 %}
+    {% set nombres_pre = p.nombres or partes[:corte]|join(' ') %}
+    {% set apellidos_pre = p.apellidos or partes[corte:]|join(' ') %}
+    <section class="card" aria-labelledby="sec-registro">
+      <h2 id="sec-registro">{{ ico('mas') }}Admisión del paciente</h2>
+      <form method="POST" action="/admision/registrar">
+        <fieldset>
+          <legend>Sede</legend>
+          <div class="grid">
+            <div class="campo">
+              <label for="f_sede_id">Sede de la atención <span class="req" aria-hidden="true">*</span></label>
+              <select id="f_sede_id" name="sede_id" required>
+                {% for sid, sd in SEDES|dictsort %}
+                <option value="{{ sid }}"{{ ' selected' if (usuario.sede_id|string) == (sid|string) }}>Sede {{ sid }} · {{ sd.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Identificación del paciente</legend>
+          <div class="grid">
+            {{ lista(1, 'tipo_documento', 'Tipo de documento', 'tipo_documento', p.tipo_documento or 'CC') }}
+            {{ entrada(2, 'documento_id', 'Número de documento', p.documento_id or (resultado.documento_id if resultado else buscar_doc) or '', req=true, pattern='\\d{4,15}', inputmode='numeric', maxlength=15, ayuda='Solo números, de 4 a 15 dígitos.') }}
+            {{ entrada(3, 'pais_nacionalidad', 'País de nacionalidad', p.pais_nacionalidad or 'CO', maxlength=3, ayuda='Código ISO, por ejemplo CO.') }}
+            {{ entrada(4, 'nombres', 'Nombres', nombres_pre, req=true, autocomplete='given-name') }}
+            {{ entrada(4, 'apellidos', 'Apellidos', apellidos_pre, req=true, autocomplete='family-name') }}
+            {{ entrada(5, 'fecha_nacimiento', 'Fecha de nacimiento', (p.fecha_nacimiento|string)[:10] if p.fecha_nacimiento else '', tipo='date', req=true) }}
+            {{ lista(8, 'sexo', 'Sexo', 'sexo', p.sexo, req=true) }}
+            {{ lista(9, 'genero', 'Género', 'genero', p.genero) }}
+            {{ entrada(10, 'ocupacion', 'Ocupación', p.ocupacion or '') }}
+            {{ lista(12, 'categoria_discapacidad', 'Categoría de discapacidad', 'categoria_discapacidad', p.categoria_discapacidad) }}
+            {{ entrada(13, 'pais_residencia', 'País de residencia', p.pais_residencia or 'CO', maxlength=3) }}
+            {{ entrada(14, 'municipio_residencia', 'Municipio de residencia (DANE)', p.municipio_residencia or '', pattern='\\d{5}', inputmode='numeric', maxlength=5, placeholder='Ej. 70001', ayuda='Código DANE de 5 dígitos.') }}
+            {{ lista(15, 'etnia', 'Etnia', 'etnia', p.etnia) }}
+            <div class="campo campo-check">
+              <input type="checkbox" id="f_voluntad_anticipada" name="voluntad_anticipada" value="S"{{ ' checked' if p.voluntad_anticipada in ('S', true, 'true', '1') }}>
+              <label for="f_voluntad_anticipada">Tiene voluntad anticipada</label>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Residencia, contacto y responsable</legend>
+          <div class="grid">
+            {{ lista(51, 'zona_residencia', 'Zona de residencia', 'zona_residencia', p.zona_residencia) }}
+            {{ entrada(52, 'direccion_residencia', 'Dirección de residencia', p.direccion_residencia or '', autocomplete='street-address') }}
+            {{ entrada(53, 'telefono', 'Teléfono', p.telefono or '', tipo='tel', autocomplete='tel') }}
+            {{ entrada(54, 'correo_electronico', 'Correo electrónico', p.correo_electronico or '', tipo='email', autocomplete='email') }}
+            {{ entrada(55, 'nombre_responsable', 'Nombre del responsable', p.nombre_responsable or '') }}
+            {{ lista(56, 'parentesco_responsable', 'Parentesco del responsable', 'parentesco', p.parentesco_responsable) }}
+            {{ entrada(57, 'telefono_responsable', 'Teléfono del responsable', p.telefono_responsable or '', tipo='tel') }}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Datos de la atención</legend>
+          <div class="grid">
+            {{ entrada(16, 'entidad_salud', 'Entidad de salud (EPS)', p.entidad or '', placeholder='Ej. EPS001') }}
+            {{ lista(18, 'modalidad_entrega', 'Modalidad de entrega', 'modalidad_entrega', '01', vacio=none) }}
+            {{ lista(19, 'entorno_atencion', 'Entorno de atención', 'entorno_atencion', '01', vacio=none) }}
+            {{ lista(20, 'via_ingreso', 'Vía de ingreso', 'via_ingreso', '01', vacio=none) }}
+            {{ lista(23, 'clasificacion_triage', 'Clasificación del triage', 'clasificacion_triage', none, vacio='— Sin triage —') }}
+            {{ entrada(24, 'comunidad_etnica', 'Comunidad étnica', '') }}
+            <div class="campo campo-ancho">
+              <label for="f_causa_atencion">Motivo de consulta</label>
+              <textarea id="f_causa_atencion" name="causa_atencion" aria-describedby="f_causa_ayuda"></textarea>
+              <small id="f_causa_ayuda">Tal como lo refiere el paciente.</small>
+            </div>
+          </div>
+        </fieldset>
+        <div class="form-pie">
+          <small class="muted"><span class="req" aria-hidden="true">*</span> Campo obligatorio</small>
+          <button type="submit" class="btn">{{ ico('check') }}Registrar admisión</button>
+        </div>
+      </form>
+    </section>
+
+    {# ── Envíos recientes ── #}
+    <section class="card" aria-labelledby="sec-bus">
+      <h2 id="sec-bus">{{ ico('bus') }}Envíos recientes</h2>
+      {% if bus and bus.error %}<p class="alerta-err" role="alert">{{ ico('x') }}<strong>Servicio de integración no disponible:</strong> {{ bus.error }}</p>{% endif %}
+      {% if bus and bus.sedes_no_disponibles %}<p class="alerta" role="alert">{{ ico('alerta') }}Sin conexión con {% for s in bus.sedes_no_disponibles %}Sede {{ s }}{{ ', ' if not loop.last }}{% endfor %}. Los envíos quedan en cola de reintento.</p>{% endif %}
+      {% if bus and bus.pendientes_en_cola %}<p class="muted">En cola de reintento: <span class="badge est-reintentando">{{ bus.pendientes_en_cola|length }}</span></p>{% endif %}
+      <div class="tabla-scroll alta">
+      <table>
+        <caption class="sr-only">Últimos envíos a las sedes</caption>
+        <thead>
+          <tr>
+            <th scope="col">Mensaje</th>
+            <th scope="col">Tipo</th>
+            <th scope="col">Formato</th>
+            <th scope="col">Sede</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Intentos</th>
+            <th scope="col">Recibido</th>
+            <th scope="col">Actualizado</th>
+            <th scope="col">Motivo de rechazo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in ((bus.mensajes if bus else none) or []) %}
+          <tr>
+            <th scope="row" class="mono">{{ m.mensaje_id or "—" }}</th>
+            <td>{{ m.tipo_mensaje or '—' }}</td>
+            <td>{% if m.formato %}<span class="badge b-neutro">{{ m.formato }}</span>{% else %}—{% endif %}</td>
+            <td class="nowrap">Sede {{ m.sede_origen or '—' }} {% if m.motor %}{{ motor(m.motor) }}{% endif %}</td>
+            <td>{{ estado_msg(m.estado) }}</td>
+            <td class="num-col">{{ m.intentos if m.intentos is not none else '—' }}</td>
+            <td class="nowrap">{{ fecha(m.recibido_en) }}</td>
+            <td class="nowrap">{{ fecha(m.actualizado_en) }}</td>
+            <td>{{ m.motivo_rechazo or '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="vacio">Sin envíos recientes.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
     </section>
   </main>
+  {{ marco.pie() }}
 </body>
 </html>
-
