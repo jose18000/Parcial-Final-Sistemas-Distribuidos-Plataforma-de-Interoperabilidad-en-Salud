@@ -1,58 +1,53 @@
 -- db/sede3/init.sql
--- Inicialización Sede 3: Corozal (pg_sede3 :5435)
+-- Sede 3 · Corozal · PostgreSQL (pg_sede3). Esta sede envía CSV legado al bus.
+-- Datos 100 % sintéticos. fhir_patient_id en NULL: la cobertura FHIR arranca en 0 %.
 
 \i /docker-entrypoint-initdb.d/00_schema.sql
 
--- 1. Sede (catálogo completo de sedes)
-INSERT INTO sede (sede_id, nombre, ciudad, activa)
-VALUES
-    (1, 'IPS Sincelejo Central',     'Sincelejo', TRUE),
-    (2, 'IPS Cartagena Bocagrande',  'Cartagena', TRUE),
-    (3, 'IPS Corozal La Perla',      'Corozal',   TRUE)
+INSERT INTO sede (sede_id, nombre, ciudad, codigo_prestador, motor) VALUES
+    (1, 'IPS Sincelejo Central',    'Sincelejo', '700010000101', 'postgresql'),
+    (2, 'IPS Cartagena Bocagrande', 'Cartagena', '130010000202', 'mongodb'),
+    (3, 'IPS Corozal La Perla',     'Corozal',   '702150000303', 'postgresql')
 ON CONFLICT (sede_id) DO NOTHING;
 
--- 2. Profesionales de Sede 3
-INSERT INTO profesional_salud (codigo, nombre_completo, especialidad, registro_medico, sede_id)
-VALUES 
-    ('MED-01', 'Dra. Laura Vega', 'Medicina General (Rotativa)', 'RM-10492-SIN', 3),
-    ('MED-03', 'Dr. Camilo Orozco', 'Urgencias', 'RM-33109-CRZ', 3)
+INSERT INTO profesional_salud (codigo, nombre_completo, especialidad, registro_medico, sede_id) VALUES
+    ('MED-01', 'Dra. Laura Vega',   'Medicina general (rotativa)', 'RM-10492-SIN', 3),
+    ('MED-02', 'Dr. Mateo Ruiz',    'Neumología (interconsulta)',  'RM-20831-CTG', 3),
+    ('MED-03', 'Dr. Camilo Orozco', 'Urgencias',                   'RM-33109-CRZ', 3)
 ON CONFLICT (codigo) DO NOTHING;
 
--- 3. Pacientes sintéticos
--- NOTA CRÍTICA: fhir_patient_id es NULL (cobertura FHIR arranca en 0%)
--- Paciente 1001 (Carlos Perez) con atenciones aquí también (Tercera sede: completa el requisito de 1 paciente en las 3 sedes)
-INSERT INTO usuario (documento_id, tipo_documento, nombre_completo, fecha_nacimiento, sexo, direccion, telefono, fhir_patient_id, sede_origen_id)
-VALUES 
-    ('1001', 'CC', 'Carlos Perez', '1980-04-12', 'M', 'Calle 22 # 14-30, Sincelejo (Atencion Corozal)', '3001234567', NULL, 1),
-    ('1008', 'CC', 'Camila Suarez Pineda', '1996-02-10', 'F', 'Carrera 28 # 12-40, Corozal', '3124445566', NULL, 3),
-    ('1009', 'CC', 'Ricardo Mendoza Lara', '1971-07-19', 'M', 'Barrio San Jose Manzana B, Corozal', '3189991122', NULL, 3),
-    ('1010', 'CC', 'Sofia Blanco Mesa', '2004-12-01', 'F', 'Calle 30 # 20-15, Corozal', '3015556677', NULL, 3)
+-- 1001 también se atendió aquí: completa el paciente con registros en las 3 sedes.
+-- 1008, 1009 y 1010 llegan por el CSV legado (ejemplos/04_sede3_legado.csv); aquí solo existe 1001.
+INSERT INTO usuario (documento_id, tipo_documento, pais_nacionalidad, nombre_completo, apellidos, nombres,
+    fecha_nacimiento, edad, unidad_edad, sexo, pais_residencia, municipio_residencia, zona_residencia,
+    direccion_residencia, telefono, fhir_patient_id, sede_origen_id) VALUES
+    ('1001', 'CC', 'CO', 'Carlos Perez', 'Perez', 'Carlos', '1980-04-12', 46, '1', 'M', 'CO', '70001', '01',
+     'Calle 22 # 14-30, Sincelejo', '3001234567', NULL, 1)
 ON CONFLICT (documento_id) DO NOTHING;
 
--- 4. Atenciones en Sede 3
-INSERT INTO atencion (numero_visita, clase_atencion, fecha_ingreso, fecha_egreso, triage, estado, fhir_encounter_id, documento_id, sede_id, codigo_profesional)
-VALUES 
-    ('V-S3-0045', 'E', '2026-05-10 18:30:00', '2026-05-10 21:00:00', 3, 'FINALIZADA', NULL, '1001', 3, 'MED-03'),
-    ('V-S3-0050', 'E', '2026-11-07 08:30:00', '2026-11-07 10:00:00', 3, 'FINALIZADA', NULL, '1008', 3, 'MED-01'),
-    ('V-S3-0051', 'O', '2026-11-07 09:10:00', '2026-11-07 09:40:00', NULL, 'FINALIZADA', NULL, '1009', 3, 'MED-03')
+INSERT INTO atencion (numero_visita, documento_id, sede_id, entidad_salud, fecha_ingreso, modalidad_entrega,
+    entorno_atencion, via_ingreso, causa_atencion, fecha_triage, clasificacion_triage, clase_atencion,
+    codigo_profesional, estado) VALUES
+    ('V-S3-0045', '1001', 3, 'Nueva EPS', '2026-05-10 18:30:00', '01', '01', '01',
+     'Deposiciones líquidas y deshidratación leve', '2026-05-10 18:35:00', '3', 'E', 'MED-03', 'FINALIZADA')
 ON CONFLICT (numero_visita) DO NOTHING;
 
--- 5. Diagnósticos
-INSERT INTO diagnostico (cie10_codigo, descripcion_cie10, tipo, fecha_diagnostico, fhir_condition_id, numero_visita)
-VALUES 
-    ('A09', 'Diarrea y gastroenteritis de presunto origen infeccioso', 'PRINCIPAL', '2026-05-10', NULL, 'V-S3-0045'),
-    ('A09', 'Diarrea y gastroenteritis de presunto origen infeccioso', 'PRINCIPAL', '2026-11-07', NULL, 'V-S3-0050'),
-    ('I10', 'Hipertensión esencial', 'PRINCIPAL', '2026-11-07', NULL, 'V-S3-0051');
+INSERT INTO diagnostico (diagnostico_id, numero_visita, cie10_codigo, descripcion_cie10, rol, tipo_diagnostico, orden, fecha_diagnostico) VALUES
+    ('cond-V-S3-0045-ing-A09', 'V-S3-0045', 'A09', 'Diarrea y gastroenteritis de presunto origen infeccioso', 'INGRESO', '01', 1, '2026-05-10'),
+    ('cond-V-S3-0045-egr-A09', 'V-S3-0045', 'A09', 'Diarrea y gastroenteritis de presunto origen infeccioso', 'EGRESO',  '01', 1, '2026-05-10')
+ON CONFLICT (diagnostico_id) DO NOTHING;
 
--- 6. Observaciones
-INSERT INTO tecnologia_salud (loinc_codigo, descripcion_loinc, valor, unidad, fecha_toma, tipo, fhir_observation_id, numero_visita)
-VALUES 
-    ('2951-2', 'Sodio [Moles/volumen] en suero o plasma', 138.00, 'mmol/L', '2026-05-10 19:00:00', 'LABORATORIO', NULL, 'V-S3-0045'),
-    ('2823-3', 'Potasio [Moles/volumen] en suero o plasma', 4.10, 'mmol/L', '2026-05-10 19:00:00', 'LABORATORIO', NULL, 'V-S3-0045');
+INSERT INTO tecnologia_salud (tecnologia_id, numero_visita, tipo, loinc_codigo, descripcion_loinc, valor, unidad, fecha_toma) VALUES
+    ('obs-V-S3-0045-2951-2', 'V-S3-0045', 'LABORATORIO', '2951-2', 'Sodio en suero o plasma',   138.00, 'mmol/L', '2026-05-10 19:00:00'),
+    ('obs-V-S3-0045-2823-3', 'V-S3-0045', 'LABORATORIO', '2823-3', 'Potasio en suero o plasma',   4.10, 'mmol/L', '2026-05-10 19:00:00')
+ON CONFLICT (tecnologia_id) DO NOTHING;
 
--- 7. Egreso
-INSERT INTO egreso (fecha_egreso, motivo_egreso, condicion_salida, destino_post_egreso, sello_hash, numero_visita)
-VALUES 
-    ('2026-05-10 21:00:00', 'Hidratacion oral exitosa', 'ESTABLE', 'DOMICILIO', '9f8e7d6c5b4a3928170e1f2d3c4b5a6978e0f1d2c3b4a59687e0f1d2c3b4a596', 'V-S3-0045'),
-    ('2026-11-07 10:00:00', 'Plan de rehidratacion formulado', 'ESTABLE', 'DOMICILIO', '3b4c5d6e7f8a90123456789abcdef0123456789abcdef0123456789abcdef01', 'V-S3-0050');
+INSERT INTO tecnologia_salud (tecnologia_id, numero_visita, tipo, descripcion_medicamento, dosis, via_administracion,
+    frecuencia, dias_tratamiento, unidades_aplicadas, id_personal_salud, finalidad_tecnologia) VALUES
+    ('med-V-S3-0045-sro', 'V-S3-0045', 'MEDICAMENTO', 'Sales de rehidratación oral sobre', '1 sobre', '01',
+     'Después de cada deposición', 3, 6, 'MED-03', '01')
+ON CONFLICT (tecnologia_id) DO NOTHING;
 
+INSERT INTO egreso (numero_visita, fecha_salida, condicion_salida, codigo_prestador, alergias, responsable_egreso) VALUES
+    ('V-S3-0045', '2026-05-10 21:00:00', '01', '702150000303', 'Ninguna conocida', 'Dr. Camilo Orozco')
+ON CONFLICT (numero_visita) DO NOTHING;

@@ -1,201 +1,116 @@
 """
 db/consulta_unificada.py
-Servicio de Consulta Unificada Distribuida (Scatter-Gather / Fan-Out).
+Consulta unificada distribuida (scatter-gather) sobre sedes con motores distintos.
 
-Responsabilidad:
-Recorrer los 3 nodos de base de datos (Sincelejo, Cartagena, Corozal),
-consolidar la historia clínica de un paciente por documento_id exacto,
-y tolerar fallos parciales (si un nodo no responde, reportar sedes caídas
-y marcar el resultado como incompleto según el principio AP del teorema CAP).
+    Sede 1 (PostgreSQL) ─┐
+    Sede 2 (MongoDB)    ─┼─> traductor universal -> historia canónica única del paciente
+    Sede 3 (PostgreSQL) ─┘
+
+- Las 3 sedes se consultan EN PARALELO: una sede caída cuesta como máximo su timeout,
+  no suma al tiempo de las demás.
+- Regla de coincidencia entre sedes: documento exacto (documento_id).
+- Tolerancia a fallos (AP en CAP): si una sede no responde, se devuelve lo de las otras,
+  se marca la sede como no disponible y el reporte NO se da por completo.
 """
 
-import os
 import sys
 import json
+import time
 import logging
-from typing import Dict, Any, List
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, List
 
-# Soporte opcional para psycopg2 / psycopg
-try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-    PSYCOPG_AVAILABLE = True
-except ImportError:
-    PSYCOPG_AVAILABLE = False
+from db.repositorio import todos_los_repositorios, RepositorioSede
+from traductor.catalogo_57 import SEDES
+from traductor.traductor import cobertura_57
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("consulta_unificada")
 
-# Configuración de conexiones a los 3 nodos PostgreSQL
-CONFIG_NODOS = [
-    {
-        "sede_id": 1,
-        "nombre": "Sede 1 - Sincelejo",
-        "host": os.getenv("DB_HOST_SEDE1", "localhost"),
-        "port": int(os.getenv("DB_PORT_SEDE1", "5433")),
-        "database": os.getenv("DB_NAME_SEDE1", "clinica_sincelejo"),
-        "user": os.getenv("POSTGRES_USER", "clinica_user"),
-        "password": os.getenv("POSTGRES_PASSWORD", "clinica_pass_2026")
-    },
-    {
-        "sede_id": 2,
-        "nombre": "Sede 2 - Cartagena",
-        "host": os.getenv("DB_HOST_SEDE2", "localhost"),
-        "port": int(os.getenv("DB_PORT_SEDE2", "5434")),
-        "database": os.getenv("DB_NAME_SEDE2", "clinica_cartagena"),
-        "user": os.getenv("POSTGRES_USER", "clinica_user"),
-        "password": os.getenv("POSTGRES_PASSWORD", "clinica_pass_2026")
-    },
-    {
-        "sede_id": 3,
-        "nombre": "Sede 3 - Corozal",
-        "host": os.getenv("DB_HOST_SEDE3", "localhost"),
-        "port": int(os.getenv("DB_PORT_SEDE3", "5435")),
-        "database": os.getenv("DB_NAME_SEDE3", "clinica_corozal"),
-        "user": os.getenv("POSTGRES_USER", "clinica_user"),
-        "password": os.getenv("POSTGRES_PASSWORD", "clinica_pass_2026")
-    }
-]
+# Compatibilidad con módulos que listaban los nodos
+CONFIG_NODOS = [{"sede_id": s, "nombre": d["nombre"], "motor": d["motor"]} for s, d in SEDES.items()]
 
 
-def consultar_sede_nodo(nodo_cfg: Dict[str, Any], documento_id: str) -> Dict[str, Any]:
-    """Consulta la historia clínica de un paciente en un nodo específico."""
-    sede_id = nodo_cfg["sede_id"]
-    nombre_sede = nodo_cfg["nombre"]
-
-    if not PSYCOPG_AVAILABLE:
-        # Modo simulado si el driver no está instalado en el entorno local
-        return {
-            "sede_id": sede_id,
-            "disponible": False,
-            "error": "Driver psycopg2 no instalado localmente"
-        }
-
-    conn = None
+def consultar_sede(repo: RepositorioSede, documento_id: str) -> Dict[str, Any]:
+    t0 = time.time()
     try:
-        conn = psycopg2.connect(
-            host=nodo_cfg["host"],
-            port=nodo_cfg["port"],
-            dbname=nodo_cfg["database"],
-            user=nodo_cfg["user"],
-            password=nodo_cfg["password"],
-            connect_timeout=3
-        )
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # 1. Datos demográficos del paciente
-            cur.execute("""
-                SELECT documento_id, tipo_documento, nombre_completo, fecha_nacimiento, sexo, direccion, telefono, fhir_patient_id
-                FROM usuario WHERE documento_id = %s
-            """, (documento_id,))
-            usuario = cur.fetchone()
-
-            if not usuario:
-                return {
-                    "sede_id": sede_id,
-                    "disponible": True,
-                    "tiene_registros": False,
-                    "atenciones": []
-                }
-
-            # 2. Atenciones registradas en esta sede
-            cur.execute("""
-                SELECT numero_visita, clase_atencion, fecha_ingreso, fecha_egreso, triage, estado, sede_id, codigo_profesional
-                FROM atencion WHERE documento_id = %s ORDER BY fecha_ingreso DESC
-            """, (documento_id,))
-            atenciones = [dict(r) for r in cur.fetchall()]
-
-            # 3. Diagnósticos y Tecnologías por atención
-            for at in atenciones:
-                num_visita = at["numero_visita"]
-                cur.execute("""
-                    SELECT cie10_codigo, descripcion_cie10, tipo, fecha_diagnostico
-                    FROM diagnostico WHERE numero_visita = %s
-                """, (num_visita,))
-                at["diagnosticos"] = [dict(d) for d in cur.fetchall()]
-
-                cur.execute("""
-                    SELECT loinc_codigo, descripcion_loinc, valor, unidad, fecha_toma
-                    FROM tecnologia_salud WHERE numero_visita = %s
-                """, (num_visita,))
-                at["tecnologias"] = [dict(t) for t in cur.fetchall()]
-
-            return {
-                "sede_id": sede_id,
-                "nombre_sede": nombre_sede,
-                "disponible": True,
-                "tiene_registros": True,
-                "usuario": dict(usuario),
-                "atenciones": atenciones
-            }
-
+        hist = repo.historia(documento_id)
+        return {"sede_id": repo.sede_id, "nombre_sede": repo.nombre, "motor": repo.motor, "disponible": True,
+                "tiene_registros": hist is not None, "historia": hist,
+                "latencia_ms": round((time.time() - t0) * 1000, 1)}
     except Exception as e:
-        logger.warning(f"Error consultando {nombre_sede} ({nodo_cfg['host']}:{nodo_cfg['port']}): {e}")
-        return {
-            "sede_id": sede_id,
-            "nombre_sede": nombre_sede,
-            "disponible": False,
-            "error": str(e)
-        }
-    finally:
-        if conn:
-            conn.close()
+        logger.warning(f"{repo.nombre} ({repo.motor}) no respondió: {e}")
+        return {"sede_id": repo.sede_id, "nombre_sede": repo.nombre, "motor": repo.motor, "disponible": False,
+                "error": str(e).splitlines()[0][:200], "latencia_ms": round((time.time() - t0) * 1000, 1)}
+
+
+def _fusionar_usuario(base: Dict[str, Any], otro: Dict[str, Any]) -> Dict[str, Any]:
+    """El dato del usuario más completo gana; lo que una sede no tiene lo aporta otra."""
+    for k, v in otro.items():
+        if v not in (None, "") and base.get(k) in (None, ""):
+            base[k] = v
+    return base
 
 
 def consultar_historia_unificada(documento_id: str) -> Dict[str, Any]:
-    """
-    Ejecuta el patrón scatter-gather / fan-out sobre las tres sedes.
-    Regla de coincidencia: documento exacto (documento_id).
-    Tolerancia a fallos: responde con sedes disponibles y reporta incompletitud si alguna falla.
-    """
-    sedes_consultadas = []
-    sedes_disponibles = []
-    sedes_no_disponibles = []
-    todas_atenciones = []
-    datos_paciente = None
+    documento_id = str(documento_id).strip()
+    repos = todos_los_repositorios()
+    with ThreadPoolExecutor(max_workers=len(repos)) as pool:
+        resultados = list(pool.map(lambda r: consultar_sede(r, documento_id), repos))
 
-    for nodo in CONFIG_NODOS:
-        res = consultar_sede_nodo(nodo, documento_id)
-        sede_id = nodo["sede_id"]
-        sedes_consultadas.append(sede_id)
+    usuario: Dict[str, Any] = {}
+    atenciones: List[Dict[str, Any]] = []
+    sedes_disponibles, sedes_no_disponibles, sedes_con_registros = [], [], []
+    detalle_sedes = []
+    usuarios_por_sede: Dict[int, Dict[str, Any]] = {}
 
-        if res.get("disponible"):
-            sedes_disponibles.append(sede_id)
-            if res.get("tiene_registros"):
-                if not datos_paciente and res.get("usuario"):
-                    datos_paciente = res["usuario"]
-                for at in res.get("atenciones", []):
-                    at["sede_origen"] = res.get("nombre_sede", f"Sede {sede_id}")
-                    todas_atenciones.append(at)
-        else:
-            sedes_no_disponibles.append({
-                "sede_id": sede_id,
-                "nombre": nodo["nombre"],
-                "motivo": res.get("error", "Tiempo de espera agotado o nodo inactivo")
-            })
+    for res in resultados:
+        detalle_sedes.append({k: res.get(k) for k in ("sede_id", "nombre_sede", "motor", "disponible",
+                                                         "tiene_registros", "latencia_ms", "error")})
+        if not res["disponible"]:
+            sedes_no_disponibles.append({"sede_id": res["sede_id"], "nombre": res["nombre_sede"],
+                                         "motor": res["motor"], "motivo": res.get("error")})
+            continue
+        sedes_disponibles.append(res["sede_id"])
+        hist = res.get("historia")
+        if not hist:
+            continue
+        sedes_con_registros.append(res["sede_id"])
+        usuarios_por_sede[res["sede_id"]] = hist.get("usuario") or {}
+        _fusionar_usuario(usuario, hist.get("usuario") or {})
+        for at in hist.get("atenciones", []):
+            at["sede_id"] = res["sede_id"]
+            at["sede_origen"] = res["nombre_sede"]
+            at["motor_origen"] = res["motor"]
+            atenciones.append(at)
 
-    # Ordenar atenciones cronológicamente (más recientes primero)
-    todas_atenciones.sort(
-        key=lambda x: str(x.get("fecha_ingreso") or ""),
-        reverse=True
-    )
+    atenciones.sort(key=lambda a: str(a.get("fecha_ingreso") or ""), reverse=True)
+    completo = not sedes_no_disponibles
 
-    es_completo = len(sedes_no_disponibles) == 0
-
+    # Posibles duplicados mal digitados: el mismo documento con datos distintos entre sedes
+    inconsistencias = []
+    for campo in ("nombre_completo", "fecha_nacimiento", "sexo"):
+        valores = {s: u.get(campo) for s, u in usuarios_por_sede.items() if u.get(campo)}
+        if len({str(v).strip().upper() for v in valores.values()}) > 1:
+            inconsistencias.append({"campo": campo, "valores_por_sede": valores})
     return {
         "documento_id": documento_id,
-        "paciente": datos_paciente,
-        "reporte_completo": es_completo,
-        "aviso_incompletitud": None if es_completo else f"Atención: {len(sedes_no_disponibles)} sede(s) no respondieron. La historia clínica puede estar fraccionada.",
+        "paciente": usuario or None,
+        "reporte_completo": completo,
+        "aviso_incompletitud": None if completo else (
+            f"Atención: {len(sedes_no_disponibles)} sede(s) no respondieron "
+            f"({', '.join(s['nombre'] for s in sedes_no_disponibles)}). La historia puede estar incompleta."),
         "sedes_disponibles": sedes_disponibles,
         "sedes_no_disponibles": sedes_no_disponibles,
-        "total_atenciones_encontradas": len(todas_atenciones),
-        "atenciones": todas_atenciones
+        "sedes_con_registros": sedes_con_registros,
+        "inconsistencias_entre_sedes": inconsistencias,
+        "detalle_sedes": detalle_sedes,
+        "total_atenciones_encontradas": len(atenciones),
+        "atenciones": atenciones,
+        "cobertura_57": cobertura_57(usuario, atenciones) if usuario else None,
     }
 
 
 if __name__ == "__main__":
-    doc_prueba = sys.argv[1] if len(sys.argv) > 1 else "1001"
-    print(f"=== Consultando historia unificada para documento: {doc_prueba} ===")
-    resultado = consultar_historia_unificada(doc_prueba)
-    print(json.dumps(resultado, indent=2, default=str))
-
+    doc = sys.argv[1] if len(sys.argv) > 1 else "1001"
+    print(f"=== Historia unificada del documento {doc} ===")
+    print(json.dumps(consultar_historia_unificada(doc), indent=2, ensure_ascii=False, default=str))
