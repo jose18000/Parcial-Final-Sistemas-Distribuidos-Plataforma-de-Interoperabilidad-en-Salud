@@ -172,7 +172,7 @@ async function construir() {
   for (const n of ["FaDatabase", "FaLeaf", "FaExchangeAlt", "FaShieldAlt", "FaKey", "FaLink", "FaRedo", "FaCheckCircle",
     "FaFileMedical", "FaUsers", "FaClipboardList", "FaBan", "FaUserPlus", "FaLayerGroup", "FaFingerprint", "FaInbox",
     "FaTachometerAlt", "FaCubes", "FaIdCard", "FaUserCog", "FaStethoscope", "FaFileAlt", "FaPuzzlePiece",
-    "FaBalanceScale", "FaUndo", "FaClone", "FaVial", "FaPowerOff", "FaRandom"]) {
+    "FaBalanceScale", "FaUndo", "FaClone", "FaVial", "FaPowerOff", "FaRandom", "FaLock"]) {
     I[n] = await iconoPng(n);
   }
   const IA = { FaExclamationTriangle: await iconoPng("FaExclamationTriangle", HEX.accent2) };
@@ -318,7 +318,7 @@ async function construir() {
     flecha(s, 11.515, 1.9, 11.515, 2.45, MUTED, "vistas a portal", 1.5);
     s.addText([
       { text: "Portal web y API", options: { bold: true, fontSize: 16, breakLine: true, color: NAVY } },
-      { text: "token de sesión (JWT) · roles · consulta en paralelo", options: { fontSize: 12, color: C.text1 } },
+      { text: "OAuth 2.0 · roles · consulta en paralelo", options: { fontSize: 12, color: C.text1 } },
     ], { shape: pres.shapes.ROUNDED_RECTANGLE, rectRadius: 0.1, x: 10.3, y: 2.45, w: 2.43, h: 1.5, fill: { color: C.background2 }, line: { color: AZUL_MEDIO, width: 1.5 }, align: "center", valign: "middle", margin: 6, objectName: "Portal web y API" });
     s.addText([
       { text: "Base central", options: { bold: true, fontSize: 14, breakLine: true, color: C.accent2 } },
@@ -335,7 +335,7 @@ async function construir() {
       "Son siete contenedores que suben con un solo comando desde volúmenes vacíos: docker compose down -v && docker compose up -d --build. " +
       "Las tres bases de las sedes, cada una con su motor: Sincelejo (contenedor pg_sede1), Cartagena (mongo_sede2) y Corozal (pg_sede3). " +
       "El bus de integración (contenedor hsb_bus, puerto 8001) recibe HL7, CSV y JSON, traduce al registro de 57 campos, valida, evita duplicados y reintenta. Primero publica en el servidor FHIR (contenedor hapi_fhir_r4, puerto 8090) y después guarda en la sede. " +
-      "El portal web y API (contenedor api_gateway, puerto 8000) valida el token de sesión y los permisos y sirve las cuatro vistas; la consulta unificada pregunta a las tres sedes en paralelo. La base central (contenedor pg_central) guarda la auditoría encadenada y las cuentas. " +
+      "El portal web y API (contenedor api_gateway, puerto 8000) emite y valida los tokens OAuth 2.0 y los permisos y sirve las cuatro vistas; la consulta unificada pregunta a las tres sedes en paralelo. La base central (contenedor pg_central) guarda la auditoría encadenada y las cuentas. " +
       "Regla de oro: ninguna vista habla con las bases; lecturas por la API, escrituras por el bus.\n\n" +
       "Pregunta probable: ¿qué escalaría primero con 100 veces más mensajes? Respuesta: el bus. Pondríamos un broker (Kafka o RabbitMQ, una partición por sede) y varias réplicas del bus; ya son casi sin estado porque el registro de mensajes vive en cada sede. Después varios servidores FHIR y al final réplicas de lectura en las sedes."
     );
@@ -511,7 +511,7 @@ async function construir() {
   {
     const s = contenido("Seguridad y vistas", "Seguridad: permisos en la API, auditoría encadenada");
     const filas = [
-      ["FaKey", "Token de sesión (JWT)", "La API valida el token y el rol, no la pantalla"],
+      ["FaKey", "Token OAuth 2.0 (RS256)", "La API valida el token y el rol, no la pantalla"],
       ["FaUserCog", "4 roles + administrador por sede", "Paciente, admisionista, médico y auditor"],
       ["FaBan", "Acceso denegado (403) auditado", "Cada intento denegado entra a la cadena"],
       ["FaLink", "Auditoría encadenada SHA-256", "Cada evento firma al anterior"],
@@ -529,7 +529,7 @@ async function construir() {
     marco(s, S.denegado, 8.13, 1.4 + hc + 0.35, w403, h403, "Captura: error 403 acceso denegado");
     s.addNotes(
       "Presenta B (Sharith).\n" +
-      "Los permisos se validan en la API, no en la pantalla: cada petición trae un token de sesión (JWT) y cada ruta declara qué roles la pueden usar. Hay cuatro roles más el administrador, que puede ser general o de una sola sede. " +
+      "Los permisos se validan en la API, no en la pantalla: cada petición trae un token OAuth 2.0 (un JWT firmado con RS256) y cada ruta declara qué roles la pueden usar. Hay cuatro roles más el administrador, que puede ser general o de una sola sede. " +
       "Si alguien intenta algo que no le toca, recibe 403 y el intento queda registrado como ACCESO_DENEGADO. " +
       "La auditoría vive en la base central (pg_central) y es una cadena: cada evento guarda el hash del anterior y su propio hash SHA-256 sobre todos sus campos. " +
       "Y al admitir a un paciente nuevo se le crea su cuenta con una contraseña temporal que se muestra una sola vez; en el primer ingreso debe cambiarla.\n\n" +
@@ -538,7 +538,53 @@ async function construir() {
     );
   }
 
-  // ============================================================ 9. Vistas
+
+  // ============================================================ 9. Seguridad v3
+  {
+    const s = contenido("Seguridad y vistas", "Seguridad: OAuth 2.0, bases de datos y cifrado");
+    const cw = 3.87, cx = (i) => 0.6 + i * (cw + 0.26);
+    const col = (i, ic, h, color, grande, sub, items) => {
+      tarjeta(s, cx(i), 1.35, cw, 4.75, "capa " + h);
+      circuloIcono(s, I[ic], cx(i) + 0.25, 1.58, 0.62, color, h);
+      texto(s, h, { x: cx(i) + 1.0, y: 1.56, w: cw - 1.15, h: 0.66, fontSize: 16, bold: true, color: NAVY, valign: "middle" });
+      texto(s, grande, { x: cx(i) + 0.25, y: 2.4, w: cw - 0.5, h: 0.8, fontFace: HEAD, fontSize: 36, bold: true, color, valign: "middle" });
+      texto(s, sub, { x: cx(i) + 0.25, y: 3.18, w: cw - 0.5, h: 0.4, fontSize: 13, color: MUTED });
+      texto(s, items.map((x, k) => ({ text: x, options: { bullet: true, breakLine: k < items.length - 1 } })),
+        { x: cx(i) + 0.2, y: 3.65, w: cw - 0.4, h: 2.35, fontSize: 13, color: C.text1, valign: "top", paraSpaceAfter: 4 });
+    };
+    col(0, "FaKey", "Autenticación OAuth 2.0", BANDA, "RS256", "tokens con emisor, audiencia y scopes", [
+      "El bus exige token: sin él responde 401",
+      "Un sistema de la sede 1 no escribe en la sede 3: 403",
+      "Clave pública en /oauth/jwks: el bus verifica sin secretos",
+      "Refresh token con rotación y revocación",
+    ]);
+    col(1, "FaDatabase", "Seguridad en las bases", C.accent3, "1 rol", "por servicio, con lo mínimo", [
+      "Bus: lee, inserta y actualiza; no borra",
+      "API: solo lee las sedes",
+      "Auditoría de solo agregar: la app no la puede cambiar",
+      "Sin puertos publicados: red interna",
+    ]);
+    col(2, "FaLock", "Cifrado entre servidores", C.accent5, "TLS 1.3", "con una autoridad certificadora propia", [
+      "HTTPS en la API, el bus y el servidor FHIR",
+      "Cada servidor verifica el certificado del otro",
+      "Sin TLS, PostgreSQL y MongoDB rechazan la conexión",
+      "FHIR solo por la pasarela de la API, con token",
+    ]);
+    circuloIcono(s, I.FaCheckCircle, 0.6, 6.33, 0.45, C.accent5, "verificado");
+    texto(s, "Verificado: 70/70 comprobaciones por sede · 60 pruebas automatizadas · 82 aserciones en Postman",
+      { x: 1.2, y: 6.33, w: 11.5, h: 0.45, fontSize: 15, bold: true, color: NAVY, valign: "middle" });
+    s.addNotes(
+      "Presenta A (Jose) la columna de OAuth; B (Sharith) las bases y el cifrado. Corresponde al paso 8 de la demo (paso 9 del documento de comandos).\n" +
+      "El profe pidió autenticación 2.0, seguridad en las bases y en la información que viaja entre servidores; agregamos tres capas independientes. " +
+      "Primera, OAuth 2.0: la API es el servidor de autorización (/oauth/token) y emite tokens JWT firmados con RS256 con los flujos password, client_credentials y refresh_token. El bus es un servidor de recursos: verifica la firma con la clave pública que la API publica en /oauth/jwks, revisa audiencia y scope, y sin token responde 401. El sistema de la sede 1 tiene un token que solo sirve para su sede: si manda un CSV de la sede 3 recibe 403. " +
+      "Segunda, las bases: antes todo entraba con el superusuario; ahora el bus entra como hsb_escritor (lee, inserta y actualiza, no borra), la API como api_lector (solo lee) y en la base central como api_central, que sobre la auditoría solo puede insertar y leer. Las bases no tienen puertos publicados: viven en una red interna de Docker. " +
+      "Tercera, el cifrado: generamos una autoridad certificadora propia y un certificado por servidor; todo va por HTTPS y TLS 1.3, cada cliente verifica el certificado del otro y una conexión sin TLS a una base se rechaza. El servidor FHIR no tiene autenticación propia, así que solo escucha dentro del servidor y desde fuera se entra por la pasarela /fhir de la API con token.\n\n" +
+      "Pregunta probable: ¿por qué RS256 y no HS256? Respuesta: con HS256 el bus necesitaría el mismo secreto que la API para verificar, y quien lo tenga puede fabricar tokens. Con RS256 la API firma con su clave privada y el bus solo tiene la pública: puede verificar pero no fabricar.\n" +
+      "Pregunta probable: si roban la contraseña de una base, ¿qué pasa? Respuesta: desde fuera no sirve, porque las bases no tienen puertos publicados y exigen TLS; y aun dentro, cada rol tiene lo mínimo: con la de la API no se puede escribir ni alterar la auditoría."
+    );
+  }
+
+  // ============================================================ 10. Vistas
   {
     const s = contenido("Seguridad y vistas", "Cuatro vistas, una por rol");
     const v = [
@@ -563,7 +609,7 @@ async function construir() {
     );
   }
 
-  // ============================================================ 10. Panel de administración
+  // ============================================================ 11. Panel de administración
   {
     const s = contenido("Seguridad y vistas", "Panel de administración en vivo");
     const hl = 5.4, wl = (hl - 0.14) * S.resumen.w / S.resumen.h + 0.14;
@@ -590,7 +636,7 @@ async function construir() {
     );
   }
 
-  // ============================================================ 11. Resiliencia
+  // ============================================================ 12. Resiliencia
   pres.addSection({ title: "Resultados" });
   {
     const s = contenido("Resultados", "Resiliencia: probada apagando piezas");
@@ -634,7 +680,7 @@ async function construir() {
     );
   }
 
-  // ============================================================ 12. Resultados medidos
+  // ============================================================ 13. Resultados medidos
   {
     const s = contenido("Resultados", "Resultados medidos");
     const tiles = [
@@ -643,8 +689,8 @@ async function construir() {
       ["FaLayerGroup", "52/57", "campos del paciente 1001", "3 sedes, 2 motores, 100 % obligatorios", NAVY],
       ["FaClone", "1", "paciente 1007 tras reenviar", "el bus respondió «duplicado»", NAVY],
       ["FaUndo", "ROLLBACK", "ACID en PostgreSQL", "regla violada: sin usuario huérfano", C.accent3],
-      ["FaVial", "44/44", "pruebas automatizadas", "pytest, en 8,78 s", C.accent5],
-      ["FaExchangeAlt", "148", "mensajes de prueba", "135 entregados · 8 rechazados · 5 duplicados", NAVY],
+      ["FaVial", "60/60", "pruebas automatizadas", "pytest: 44 + 16 de OAuth 2.0", C.accent5],
+      ["FaShieldAlt", "70/70", "comprobaciones por sede", "63 de interoperabilidad + 7 de seguridad", NAVY],
       ["FaLink", "Índice 3", "auditoría alterada", "detectada por el verificador de la cadena", C.accent2],
     ];
     const w = 2.86, h = 2.55, gx = (12.13 - 4 * w) / 3;
@@ -661,14 +707,14 @@ async function construir() {
       "Presenta A (Jose).\n" +
       "Estos números son medidos en Kali Linux, en una máquina virtual de 3,8 GB con Docker 28, el 10 y 11 de noviembre. " +
       "El paquete FHIR del paciente 1001 pasó la validación oficial ($validate) con 0 errores. El mensaje completo cubre 56 de 57 campos y la historia real de 1001, desde tres sedes y dos motores, 52 de 57, siempre con el 100 % de los obligatorios. " +
-      "Reenviar el ejemplo 01 dejó un solo Patient 1007. La demo de ACID en PostgreSQL (db/demo_acid.sql) hace rollback completo cuando se viola un CHECK. Pasan las 44 pruebas automatizadas. " +
+      "Reenviar el ejemplo 01 dejó un solo Patient 1007. La demo de ACID en PostgreSQL (db/demo_acid.sql) hace rollback completo cuando se viola un CHECK. Pasan las 60 pruebas automatizadas: las 44 de antes y 16 de OAuth 2.0. El verificador sede por sede da 70 de 70: 63 de interoperabilidad y 7 de seguridad. " +
       "Para las capturas cargamos 148 mensajes: 135 entregados, 8 rechazados a propósito y 5 duplicados. Y el UPDATE sobre la auditoría se detectó en el índice 3. " +
       "Lo que no medimos de forma sistemática es la latencia y los mensajes por minuto bajo carga; los contadores de /metrics son de una sesión de demo, no una prueba de carga.\n\n" +
       "Pregunta probable: ¿cómo se calcula la cobertura? Respuesta: hay dos. La FHIR por sede es pacientes con fhir_patient_id sobre pacientes de la sede (0 % al inicio). La de 57 campos cuenta un campo como cubierto si tiene valor en el usuario o en alguna atención de cualquier sede."
     );
   }
 
-  // ============================================================ 13. Guion de la demo
+  // ============================================================ 14. Guion de la demo
   pres.addSection({ title: "Demo y cierre" });
   {
     const s = contenido("Demo y cierre", "Guion de la demostración en vivo");
@@ -679,10 +725,11 @@ async function construir() {
       ["05:30", "B", "Reenvío: el bus responde duplicado", "Mismo mensaje: 1 solo paciente 1007"],
       ["07:30", "B", "Cae la base de Cartagena", "Reporte incompleto y luego se recupera"],
       ["10:30", "B", "Auditoría alterada y detectada", "Se cambia un evento: alerta en el índice 3"],
-      ["12:00", "A+B", "Consulta unificada y Reporte de HC", "Paciente 1001: 3 sedes, 52/57 campos"],
+      ["11:30", "A+B", "Consulta unificada y Reporte de HC", "Paciente 1001: 3 sedes, 52/57 campos"],
+      ["13:00", "A+B", "Seguridad: tokens, roles y TLS", "Sin token 401 · sin permiso en la base · sin TLS"],
     ];
-    const y0 = 1.35, rh = 0.72;
-    s.addShape(pres.shapes.LINE, { x: 0.84, y: y0 + 0.24, w: 0, h: rh * 6, line: { color: LINEA, width: 2 }, objectName: "línea de tiempo" });
+    const y0 = 1.35, rh = 0.63;
+    s.addShape(pres.shapes.LINE, { x: 0.84, y: y0 + 0.24, w: 0, h: rh * 7, line: { color: LINEA, width: 2 }, objectName: "línea de tiempo" });
     pasos.forEach(([min, quien, t, cmd], i) => {
       const y = y0 + i * rh;
       s.addText(String(i + 1), { shape: pres.shapes.OVAL, x: 0.6, y, w: 0.48, h: 0.48, fill: { color: BANDA }, color: C.background1, bold: true, fontSize: 15, align: "center", valign: "middle", margin: 0, objectName: "paso " + (i + 1) });
@@ -694,29 +741,31 @@ async function construir() {
     texto(s, "Intercalado (A): mensaje de 57 campos con el servidor FHIR apagado a las 06:30; se ve entregado a las 09:30 (56/57).", { x: 0.6, y: 6.4, w: 11.6, h: 0.35, fontSize: 12, color: MUTED, italic: true });
     s.addNotes(
       "Presentan A y B. Esta diapositiva queda de fondo como mapa de la demo.\n" +
-      "1 (A): docker compose down -v && docker compose up -d --build; docker compose ps; curl -s http://localhost:8001/health | jq. " +
-      "2 (B): entrar como auditor_elena en localhost:8000/login y abrir localhost:8000/reporte?pestana=tablero: cobertura FHIR 0 %. " +
-      "3 (A): POST /hsb/hl7 con ejemplos 01, 02 y 03 y POST /hsb/csv?sede=3 con el ejemplo 04 (3 entregados, 2 rechazados); la cobertura sube: sede 1 50 %, sede 2 33,3 %, sede 3 75 %. " +
-      "4 (B): reenviar el ejemplo 01 → duplicado; curl \"localhost:8090/fhir/Patient?identifier=1007&_summary=count\" da 1, y countDocuments en mongo_sede2 da 1. " +
+      "Todo va por HTTPS y el bus exige token: al empezar, source scripts/sesion_demo.sh deja $CURL y $TOKEN. Los comandos exactos están en el documento de comandos de clase.\n" +
+      "1 (A): bash desplegar.sh --desde-cero; docker compose ps; $CURL https://localhost:8001/health. " +
+      "2 (B): entrar como auditor_elena en https://localhost:8000 y abrir la sección FHIR del panel: cobertura FHIR 0 %. " +
+      "3 (A): POST /hsb/hl7 (con -H \"Authorization: Bearer $TOKEN\") con ejemplos 01, 02 y 03 y POST /hsb/csv?sede=3 con el ejemplo 04 (3 entregados, 2 rechazados); la cobertura sube: sede 1 50 %, sede 2 33,3 %, sede 3 75 %. " +
+      "4 (B): reenviar el ejemplo 01 → duplicado; $CURL \"https://localhost:8090/fhir/Patient?identifier=1007&_summary=count\" da 1, y countDocuments en mongo_sede2 (con --tls) da 1. " +
       "Intercalado (A): docker compose stop hapi-fhir, enviar tests/datos/06_adt_a03_57_campos_sede1.hl7 (queda reintentando) y docker compose start hapi-fhir. " +
       "5 (B): como medico_mateo buscar 1001; docker stop mongo_sede2; reporte incompleto y /health DEGRADED 2/3; docker start mongo_sede2. " +
       "6 (B): como paciente_carlos abrir /api/pacientes/1002/historia → 403; docker exec -it pg_central psql -U clinica_user -d clinica_central -c \"UPDATE evento_auditoria SET usuario_sistema='intruso' WHERE indice = 3\"; el tablero marca el índice 3. " +
-      "7 (A+B): A abre localhost:8000/reporte?buscar_doc=1001 (3 sedes, 52/57, sello); B registra un diagnóstico CIE-10 como médico y muestra el sello.\n" +
-      "Si algo falla: si el mensaje de 57 campos queda MUERTO, curl -X POST localhost:8001/hsb/reencolar/MSG-0057; si el ejemplo 01 sale duplicado la primera vez, faltó el down -v."
+      "7 (A+B): A abre https://localhost:8000/reporte?buscar_doc=1001 (3 sedes, 52/57, sello); B registra un diagnóstico CIE-10 como médico y muestra el sello. " +
+      "8 (A+B): A muestra OAuth (metadatos, token del médico decodificado, bus sin token = 401, sede 1 escribiendo en la sede 3 = 403); B corre bash scripts/demo_seguridad_bd.sh (permisos denegados, sin TLS rechazado, conexiones TLS 1.3) y openssl s_client contra el bus.\n" +
+      "Si algo falla: si el mensaje de 57 campos queda MUERTO, $CURL -H \"Authorization: Bearer $TOKEN\" -X POST https://localhost:8001/hsb/reencolar/MSG-0057; si el bus responde 401 expired, repetir source scripts/sesion_demo.sh; si el ejemplo 01 sale duplicado la primera vez, faltó el --desde-cero."
     );
   }
 
-  // ============================================================ 14. Limitaciones
+  // ============================================================ 15. Limitaciones
   {
     const s = contenido("Demo y cierre", "Limitaciones y trabajo futuro");
     texto(s, "Hoy", { x: 0.6, y: 1.3, w: 5.5, h: 0.35, fontSize: 15, bold: true, color: C.accent2 });
     texto(s, "Siguiente paso", { x: 7.0, y: 1.3, w: 5.5, h: 0.35, fontSize: 15, bold: true, color: NAVY });
     const filas = [
       ["MongoDB sin replica set", "Replica set y versión del documento"],
-      ["Bus de integración sin autenticación", "Keycloak / OIDC y TLS entre servicios"],
-      ["Un solo servidor FHIR", "Varios servidores FHIR sobre PostgreSQL"],
+      ["OAuth propio, flujo password y CA propia", "OIDC (Keycloak) con PKCE, TLS mutuo y Vault"],
+      ["Un solo servidor FHIR", "Varios servidores FHIR y cifrado en reposo"],
       ["Latencia no medida con carga", "Prueba de carga: latencia y mensajes/min"],
-      ["Kubernetes sin probar en Minikube", "Kubernetes en Minikube y CI (44 pruebas)"],
+      ["Kubernetes sin probar en Minikube", "Kubernetes en Minikube y CI (60 pruebas)"],
     ];
     filas.forEach(([a, b], i) => {
       const y = 1.75 + i * 0.98;
@@ -731,25 +780,25 @@ async function construir() {
     s.addNotes(
       "Presenta A (Jose).\n" +
       "Queremos ser honestos con lo que el prototipo no resuelve. MongoDB corre sin replica set: no hay conmutación por fallo ni transacciones multi-documento. " +
-      "El bus de integración (hsb_bus, puerto 8001) no exige autenticación; solo el portal y API la exige. Hay un solo servidor FHIR (hapi_fhir_r4) con su base embebida. No medimos latencia ni mensajes por minuto con una prueba de carga. " +
+      "La seguridad usa un servidor OAuth propio con el flujo password, que OAuth 2.1 desaconseja, y una autoridad certificadora propia que los navegadores no conocen; los secretos van en un archivo .env. Hay un solo servidor FHIR (hapi_fhir_r4), ya guardado en PostgreSQL pero sin réplica, y las bases no están cifradas en reposo. No medimos latencia ni mensajes por minuto con una prueba de carga. " +
       "Y aunque dejamos manifiestos de Kubernetes para Minikube (infra/k8s), no presentamos evidencia de que corran. " +
-      "El trabajo futuro sale directo de esa lista: replica set, Keycloak con TLS, varios servidores FHIR sobre PostgreSQL, una prueba de carga y un pipeline de CI que corra las 44 pruebas.\n\n" +
+      "El trabajo futuro sale directo de esa lista: replica set, un proveedor OIDC como Keycloak con PKCE, TLS mutuo y un gestor de secretos como Vault, varios servidores FHIR, una prueba de carga y un pipeline de CI que corra las 60 pruebas.\n\n" +
       "Pregunta probable: ¿qué pasa si alguien con acceso a la base central rehace toda la cadena? Respuesta: puede hacerlo; por eso el trabajo futuro incluye anclar periódicamente el último hash fuera del sistema, por ejemplo en Hyperledger Fabric."
     );
   }
 
-  // ============================================================ 15. Cierre
+  // ============================================================ 16. Cierre
   {
     const s = pres.addSlide({ masterName: "CIERRE", sectionTitle: "Demo y cierre" });
     texto(s, [
       { text: "¡Muchas Gracias!", options: { fontSize: 22, bold: true, color: NAVY } },
       { text: "  ·  Espacio de preguntas", options: { fontSize: 20, color: NAVY } },
     ], { x: 2.17, y: 4.66, w: 9.0, h: 0.45, fontFace: HEAD, align: "center", valign: "middle" });
-    texto(s, "Demo en vivo: http://192.168.1.94:8000 · Repositorio con etiqueta v1.0", { x: 2.67, y: 6.08, w: 8.0, h: 0.3, fontSize: 12, color: MUTED, align: "center" });
+    texto(s, "Demo en vivo: https://localhost:8000 · Repositorio con etiqueta v1.0", { x: 2.67, y: 6.08, w: 8.0, h: 0.3, fontSize: 12, color: MUTED, align: "center" });
     s.addNotes(
       "Presenta B (Sharith).\n" +
-      "Para cerrar: un catálogo de 57 campos, un registro común y entregas que no duplican bastaron para unificar tres sedes con motores distintos, sin transacción distribuida y sin tocar los sistemas legados. " +
-      "La demo está corriendo en http://192.168.1.94:8000 y el código está en github.com/jose18000/Parcial-Final-Sistemas-Distribuidos-Plataforma-de-Interoperabilidad-en-Salud con la etiqueta v1.0; el README tiene todos los pasos y los usuarios de prueba. " +
+      "Para cerrar: un catálogo de 57 campos, un registro común y entregas que no duplican bastaron para unificar tres sedes con motores distintos, sin transacción distribuida y sin tocar los sistemas legados; y con OAuth 2.0, roles mínimos y TLS, esa información viaja y se guarda protegida. " +
+      "La demo está corriendo en https://localhost:8000 (en la red local, con la IP del PC) y el código está en github.com/jose18000/Parcial-Final-Sistemas-Distribuidos-Plataforma-de-Interoperabilidad-en-Salud con la etiqueta v1.0; el README tiene todos los pasos y los usuarios de prueba. " +
       "Gracias. Quedamos atentos a sus preguntas; las respondemos los dos.\n\n" +
       "Reparto de preguntas (para no pisarse): A lidera CAP con la sede caída, auditoría, escalar 100×, bus caído entre FHIR y sede, errores de datos. B lidera duplicados, cambio de rol en vivo, por qué MongoDB, viaje de un campo y cobertura."
     );
