@@ -9,11 +9,17 @@
 **Fecha:** Noviembre 2026  
 **Versión del informe:** Fase 2 de 5
 
+> **Actualización v2 (10–11 de noviembre de 2026).** Corrección registrada en la bitácora: el
+> esquema de la v1 cubría unos 15 de los 57 campos y las tres sedes usaban el mismo motor. Desde la
+> v2, el esquema relacional cubre los 57 campos de la Res. 866 de 2021, la **Sede 2 (Cartagena) es
+> MongoDB** (`mongo_sede2`) y la auditoría vive en `pg_central`. Las líneas afectadas abajo están
+> marcadas con "v2". Ver el [informe final](../informe_final_v7.md).
+
 ---
 
 ## 1. Decisión de Distribución y Justificación Teórica (Teorema CAP)
 
-Para este proyecto se seleccionó la estrategia de **un nodo de base de datos independiente por sede** (Sincelejo en `:5433`, Cartagena en `:5434` y Corozal en `:5435`), en lugar de consolidar un único clúster monolítico o delegar en sharding sintético con Citus.
+Para este proyecto se seleccionó la estrategia de **un nodo de base de datos independiente por sede** (Sincelejo en `:5433`, Cartagena en `:5434` y Corozal en `:5435` en la v1; desde la v2 Cartagena es MongoDB en `:27018`), en lugar de consolidar un único clúster monolítico o delegar en sharding sintético con Citus.
 
 ### 1.1 Alineación con el Patrón de Consulta y la Soberanía de Datos
 En una red de IPS real, cada sede hospitalaria opera con autonomía legal y asistencial: los pacientes que ingresan por urgencias en Cartagena son atendidos por médicos de esa sede, registrando signos vitales y formulaciones con alta concurrencia local. Si la red WAN entre ciudades sufre intermitencias, la sede local no puede detener la admisión ni los egresos clínicos. Por tanto, la clave de fragmentación natural es la **sede de atención (`sede_id`)**, que coincide en un 95 % con el patrón de escritura y consulta inmediata.
@@ -59,28 +65,29 @@ A continuación se analizan 8 fuentes académicas e industriales de ámbito glob
 ### 3.1 Infraestructura en Docker Compose
 Se implementó un entorno orquestado con 4 contenedores principales en red compartida:
 - `pg_sede1` (Sincelejo): PostgreSQL 16 Alpine en puerto `5433` con base `clinica_sincelejo`.
-- `pg_sede2` (Cartagena): PostgreSQL 16 Alpine en puerto `5434` con base `clinica_cartagena`.
+- `pg_sede2` (Cartagena): PostgreSQL 16 Alpine en puerto `5434` con base `clinica_cartagena`. **v2:** reemplazado por `mongo_sede2` (MongoDB 7, puerto `27018`, misma base `clinica_cartagena`, un documento por paciente con las atenciones embebidas; `db/sede2/init-mongo.js`).
 - `pg_sede3` (Corozal): PostgreSQL 16 Alpine en puerto `5435` con base `clinica_corozal`.
 - `hapi-fhir` (Servidor FHIR): Contenedor oficial `hapiproject/hapi:v7.2.0` en puerto `8090`.
 
-Cada nodo PostgreSQL cuenta con volúmenes dedicados (`pg_data_sede1..3`) y healthcheck con `pg_isready`.
+Cada nodo PostgreSQL cuenta con volumen dedicado (`pg_data_sede1`, `pg_data_sede3`) y healthcheck con `pg_isready`; MongoDB usa `mongo_data_sede2` y un healthcheck con `mongosh`. En la v2 se agregó `pg_central` para la auditoría.
 
 ### 3.2 Esquema Relacional Unificado
-Cada base de datos aplica el mismo contrato DDL (`db/schema.sql`) estructurado en:
+Los nodos PostgreSQL (sedes 1 y 3) aplican el mismo contrato DDL (`db/schema.sql`, ampliado en la v2 a los 57 campos de la Res. 866); la sede 2 guarda los mismos datos con otra forma y otros nombres en MongoDB, y el traductor universal (`traductor/`) convierte entre ambos. El esquema relacional está estructurado en:
 1. `usuario`: Documento, nombres, sexo, fecha de nacimiento, sede origen y `fhir_patient_id` (inicia en `NULL`, marcando 0 % de cobertura FHIR inicial).
 2. `atencion`: Número de visita (clave primaria), clase (`EMER`, `AMB`, `IMP`), fecha ingreso/egreso, triage y estado.
 3. `diagnostico`: Vinculado a la visita con código CIE-10 validado y descripción clínica.
 4. `tecnologia_salud`: Procedimientos y laboratorios vinculados con código LOINC, valor numérico y unidad de medida.
 5. `egreso`: Sello SHA-256 de integridad médica y destino del paciente.
-6. `mensaje_bus` y `evento_auditoria`: Tablas de soporte de infraestructura para registrar ciclo de vida de mensajes y cadena criptográfica inmutable.
+6. `mensaje_bus`: ciclo de vida de los mensajes del bus. (v2: `evento_auditoria` se movió a la base central `pg_central`.)
 
 ### 3.3 Normalizador Determinista a FHIR R4 (`fhir/normalizer.py`)
 El módulo desarrollado garantiza las siguientes propiedades:
 1. **Identificadores Deterministas:**
    - Paciente: `pac-{documento_id}` (ej. `pac-1001`).
    - Encuentro: `enc-{numero_visita}` (ej. `enc-V-S1-0150`).
-   - Condición: `cond-{numero_visita}-{cie10}` (ej. `cond-V-S1-0150-I10`).
-   - Observación: `obs-{numero_visita}-{loinc}` (ej. `obs-V-S1-0150-7187`).
+   - Condición: `cond-{numero_visita}-{rol}-{cie10}` (ej. `cond-V-S1-0150-ing-I10`; v2 agrega el rol del diagnóstico).
+   - Observación: `obs-{numero_visita}-{loinc}` (ej. `obs-V-S1-0150-718-7`).
+   - v2 agrega MedicationRequest (`med-…`), Practitioner (`prac-…`), Organization (`org-sede-N`) y AllergyIntolerance (`alg-…`).
 2. **Bundle Transaction con Método PUT:**
    Cada entrada del Bundle contiene `request: { method: "PUT", url: "<Tipo>/<ID>" }`. Esto significa que si el mensaje se reenvía 10 veces, HAPI FHIR actualiza el recurso determinista sin duplicar pacientes ni atenciones.
 3. **Consistencia Referencial:** Todas las referencias (`Encounter.subject`, `Condition.encounter`, etc.) apuntan a recursos existentes dentro del mismo Bundle.
@@ -94,17 +101,17 @@ La unificación de historias clínicas adopta la regla de **identidad unívoca p
 $$\text{Paciente}_A \equiv \text{Paciente}_B \iff \text{usuario.documento\_id}_A = \text{usuario.documento\_id}_B$$
 
 En nuestros datos sintéticos, el paciente **Carlos Pérez (documento `1001`)** cuenta con registros en:
-- **Sede 1 (Sincelejo):** Atención de urgencia `V-S1-0150` con diagnóstico `I10` (Hipertensión) y laboratorio de Hemoglobina (`718-7`).
+- **Sede 1 (Sincelejo):** Atención de urgencia `V-S1-0150` con diagnóstico `I10` (Hipertensión) y presión arterial sistólica (`8480-6`); la Hemoglobina (`718-7`) llega con el ejemplo `02`.
 - **Sede 2 (Cartagena):** Control ambulatorio `V-S2-0080` con diagnóstico `J45.9` (Asma) y PCR (`1988-5`).
 - **Sede 3 (Corozal):** Consulta ambulatoria `V-S3-0045` con diagnóstico `A09` (Gastroenteritis) y electrolitos (`2951-2`).
 
-La consulta unificada (`db/consulta_unificada.py`) ejecuta un *fan-out* concurrente sobre los 3 nodos y agrupa cronológicamente todas las atenciones bajo un único expediente clínico consolidado.
+La consulta unificada (`db/consulta_unificada.py`) ejecuta un *fan-out* concurrente sobre los 3 nodos (desde la v2, dos PostgreSQL y un MongoDB, a través de `db/repositorio.py`) y agrupa cronológicamente todas las atenciones bajo un único expediente clínico consolidado.
 
 ### 4.2 Documentación de Caso de Fallo por Error de Digitación
 La coincidencia exacta por documento presenta vulnerabilidades críticas en entornos legados sin validación estricta de entrada:
 1. **Error de Digitación Tipográfico:** Si el admisionista de Corozal registra por error `10001` (un cero adicional) en lugar de `1001`, el sistema considerará a este paciente como una persona diferente. La consulta unificada del paciente `1001` omitirá por completo la atención de Corozal.
 2. **Ausencia de Tipo de Documento:** Si un ciudadano extranjero tiene cédula de extranjería número `1001` y un nacional tiene cédula de ciudadanía `1001`, la coincidencia sólo por número generaría **colisión de identidades** (unificación errónea de dos pacientes distintos).
-3. **Mitigación Diseñada:** En la Fase 3, el validador del HSB valida la longitud (4 a 15 dígitos) y caracteres estrictamente numéricos antes de admitir cualquier mensaje, y en la Fase 5 la vista de admisionista alertará si detecta nombres similares con documentos divergentes.
+3. **Mitigación Diseñada:** En la Fase 3, el validador del HSB valida la longitud (4 a 15 dígitos) y caracteres estrictamente numéricos antes de admitir cualquier mensaje, y en la Fase 5 la vista de admisionista avisa cuando el mismo documento tiene nombre, fecha de nacimiento o sexo distintos entre sedes (`inconsistencias_entre_sedes`).
 
 ---
 
@@ -145,10 +152,10 @@ COMMIT;
    Como la conexión de red se interrumpió antes del *acknowledge* (ACK) de red, el HSB recibe un error de socket (`ConnectionResetError` o `Timeout`). Desde la perspectiva del bus, **el estado de la entrega es incierto**.
 
 3. **Mecanismo de Detección y No-Duplicación:**
-   - El bus marca el mensaje en su cola interna como `REINTENTANDO` y programa un nuevo intento con espera exponencial (backoff de 1 s, 2 s, 4 s...).
+   - El bus marca el mensaje como `REINTENTANDO` en `mensaje_bus` y programa un nuevo intento con espera exponencial (v2: 2 s, 4 s, 8 s, 16 s, 32 s, 64 s, hasta 7 intentos).
    - Cuando el nodo vuelve y el bus reintenta el envío, entra en juego la **idempotencia**:
      - En HAPI FHIR, el `PUT` sobre `Patient/pac-<doc>` y `Encounter/enc-<visita>` sobreescribe exactamente el mismo recurso determinista sin crear filas duplicadas.
-     - En el nodo PostgreSQL, la tabla `mensaje_bus` tiene un índice único sobre `hash_contenido` (SHA-256). Al reintentar, la cláusula `ON CONFLICT (hash_contenido)` detecta que el contenido ya fue procesado y confirma la entrega sin duplicar atenciones clínicas.
+     - En el nodo de la sede, los datos clínicos se guardan con UPSERT por llaves deterministas (`ON CONFLICT (documento_id)`, `(numero_visita)`, `(diagnostico_id)`, `(tecnologia_id)` en PostgreSQL; `replace_one` por `_id` en MongoDB): si el `COMMIT` ya había ocurrido, el reintento reescribe lo mismo. `mensaje_bus` (con `hash_contenido` único) evita además que un reenvío del emisor se procese como nuevo.
 
 ---
 
@@ -156,12 +163,12 @@ COMMIT;
 
 | Requisito / Entregable | Estado | Evidencia |
 |------------------------|--------|-----------|
-| docker-compose con 3 PostgreSQL (:5433, :5434, :5435) y HAPI FHIR (:8090) | ✅ Completo | `docker-compose.yml` |
+| docker-compose con un nodo por sede y HAPI FHIR (:8090) — v2: PostgreSQL :5433, MongoDB :27018, PostgreSQL :5435 | ✅ Completo | `docker-compose.yml` |
 | Esquema relacional homogéneo de 8 tablas | ✅ Completo | `db/schema.sql` |
-| Scripts de inicialización y datos sintéticos con `fhir_patient_id` NULL (cobertura 0 %) | ✅ Completo | `db/sede1/init.sql`, `db/sede2/init.sql`, `db/sede3/init.sql` |
+| Scripts de inicialización y datos sintéticos con `fhir_patient_id` NULL (cobertura 0 %) | ✅ Completo | `db/sede1/init.sql`, `db/sede2/init-mongo.js` (v2), `db/sede3/init.sql` |
 | Paciente con atenciones en las 3 sedes (Carlos Pérez - doc: 1001) | ✅ Completo | Datos presentes en las tres sedes |
 | Normalizador a Bundle transaction FHIR R4 con IDs deterministas y PUT | ✅ Completo | `fhir/normalizer.py` |
-| Pruebas unitarias del normalizador (mínimo 5 casos, incluye inválido) | ✅ Completo | `tests/fase2/test_normalizer.py` (6 casos implementados) |
+| Pruebas unitarias del normalizador (mínimo 5 casos, incluye inválido) | ✅ Completo | `tests/fase2/test_normalizer.py` (v2: 8 casos) y `tests/fase2/test_traductor_57.py` (10 casos) |
 | Bundle FHIR representativo con recursos Patient, Encounter, Condition y Observation | ✅ Completo | `docs/fase2/bundle_valido.json` |
 | Script de consulta unificada distribuida con soporte de tolerancia a fallos | ✅ Completo | `db/consulta_unificada.py` |
 | Script de prueba de atomicidad ACID con rollback demostrado | ✅ Completo | `db/demo_acid.sql` |

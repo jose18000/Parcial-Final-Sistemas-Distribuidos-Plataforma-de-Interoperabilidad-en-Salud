@@ -1,228 +1,619 @@
-# Informe Final — Plataforma Distribuida de Interoperabilidad Clínica
-## Red de IPS Sincelejo, Cartagena y Corozal
+# Plataforma distribuida de interoperabilidad clínica para una red de IPS con tres sedes heterogéneas
 
-**Título:** Plataforma distribuida de interoperabilidad clínica para una red de IPS con tres sedes  
-**Autores:**  
-- Jose Guillermo Canchila (A) — Correo: `memocanchila@gmail.com`  
-- Sharit Javier Manjarrez (B) — Correo: `sharit@clinica.local`  
+**Autores:**
+- Jose Guillermo Canchila (A) — Correo: `memocanchila@gmail.com`
+- Sharit Javier Manjarrez (B) — Correo: `sharit@clinica.local`
 
-**Institución:** Universidad / Asignatura de Sistemas Distribuidos  
-**Fecha:** Noviembre 2026  
-**Versión:** 1.0 (Entrega Final y Sustentación)  
+**Asignatura:** Sistemas Distribuidos · Parcial final
+**Fecha:** noviembre de 2026
+**Versión del informe:** 2.0 (prototipo v2: 57 campos, traductor universal y sedes con motores distintos)
+**Plantilla:** v7
 
 ---
 
 ## Resumen
 
-Una red de Instituciones Prestadoras de Salud (IPS) con sedes en Sincelejo, Cartagena y Corozal almacena historias clínicas fragmentadas en sistemas legados heterogéneos que emiten datos en estándares dispares (HL7 v2 y CSV delimitado por punto y coma). Este fraccionamiento impide una atención médica integral y continua sin incurrir en el costo de sustituir los sistemas existentes. En este proyecto se diseñó, implementó y validó una plataforma distribuida de interoperabilidad clínica que unifica expedientes médicos sin reemplazar los sistemas legados.
+Una red de IPS con sedes en Sincelejo, Cartagena y Corozal guarda la historia clínica de un mismo
+paciente fraccionada en sistemas legados con bases y formatos distintos. El objetivo fue construir
+una plataforma distribuida que unifique esa historia sin reemplazar los legados. Se implementó un
+bus de servicios de salud (HSB) en FastAPI que recibe HL7 v2, CSV y JSON, los traduce con un
+catálogo único de los 57 campos de la Resolución 866 de 2021 a un registro canónico, los valida y
+los entrega como Bundle FHIR R4 a HAPI FHIR y a la base de la sede: PostgreSQL en Sincelejo y
+Corozal, MongoDB en Cartagena. Una API con JWT y cuatro roles sirve las vistas, consulta las tres
+sedes en paralelo y registra cada acceso en una cadena de auditoría SHA-256. En una máquina
+virtual Kali Linux con 3,8 GB de RAM, el sistema arrancó desde cero con un comando; el mensaje HL7
+de prueba cubrió 56 de 57 campos y el 100 % de los obligatorios; la historia del paciente 1001
+reunió 52 de 57 campos desde dos motores, y su Bundle de 26 recursos validó en HAPI sin errores.
+Reenviar un mensaje no creó duplicados; con HAPI apagado, el mensaje se entregó solo a los 129,5 s;
+al detener la sede MongoDB, la consulta respondió con dos sedes y marcó el reporte incompleto; el
+verificador señaló el índice exacto de un evento alterado. Pasaron 36 pruebas automatizadas.
 
-La arquitectura se fundamenta en un Health Service Bus (HSB) modular desarrollado en FastAPI con backend relacional, un servidor oficial HAPI FHIR R4, tres nodos de base de datos PostgreSQL independientes por sede y una API Gateway con control de acceso basado en roles (RBAC) y auditoría encadenada por hash SHA-256. El sistema garantiza alta disponibilidad y tolerancia a particiones (modelo AP del teorema CAP): ante la caída de una sede hospitalaria, la consulta unificada continúa operando con las sedes activas, degradando grácilmente y señalando la incompletitud sin interrupción de servicio. Asimismo, se implementaron identificadores deterministas y transacciones con método PUT en recursos Patient, Encounter, Condition (CIE-10) y Observation (LOINC), garantizando idempotencia estricta ante reintentos con backoff exponencial.
-
-Las mediciones en el entorno de despliegue arrojaron una latencia media de 18,4 ms en consultas unificadas con 3 sedes disponibles, una tasa de reintentos exitosos del 100 % tras caídas temporales del servidor FHIR, y la detección matemática instantánea de alteraciones deliberadas en los registros de auditoría.
-
-**Palabras clave:** Sistemas distribuidos, HL7 v2, FHIR R4, Teorema CAP, Idempotencia, Interoperabilidad clínica, HSB, Tolerancia a fallos.
-
----
-
-## 1. Introducción y Objetivos
-
-### 1.1 Planteamiento del Problema
-En el sistema de salud colombiano, la fragmentación de la información asistencial representa una de las principales barreras para la calidad y seguridad del paciente. Cuando un usuario recibe atención en Sincelejo, consulta por urgencias en Cartagena y realiza controles ambulatorios en Corozal, sus registros clínicos residen en bases de datos aisladas. La ausencia de interoperabilidad genera duplicidad de exámenes de laboratorio, diagnósticos desactualizados y retrasos terapéuticos. La Ley 1438 de 2011 y la Resolución 866 de 2021 del Ministerio de Salud establecen la obligatoriedad de la historia clínica interoperable, demandando arquitecturas que respeten la autonomía de las IPS sin obligar a la sustitución traumática de sus sistemas legados.
-
-### 1.2 Objetivo General
-Diseñar, implementar y evaluar una plataforma distribuida de interoperabilidad clínica que unifique la historia médica de pacientes atendidos en tres sedes de una red de IPS, integrando sus sistemas legados en HL7 v2 y CSV sin reemplazarlos, bajo estándares FHIR R4 y principios de alta disponibilidad.
-
-### 1.3 Objetivos Específicos
-1. **Ingerir** mensajes clínicos en texto plano HL7 v2 (ADT^A01, ORU^R01) y archivos CSV legados con separador `;` provenientes de las tres sedes, validando formato, integridad de documentos y coherencia terminológica antes de la transformación.
-2. **Normalizar** las entidades relacionales al estándar internacional FHIR R4 en un Bundle de tipo `transaction` con método `PUT` e identificadores deterministas, verificado contra HAPI FHIR sin errores de validación.
-3. **Coordinar** la consulta unificada mediante un patrón *scatter-gather* sobre los tres nodos PostgreSQL, garantizando tolerancia a fallos parciales según el teorema CAP (degradación a reporte parcial si un nodo cae).
-4. **Implementar** un modelo de seguridad por roles (paciente, admisionista, médico, auditor) con auditoría inmutable encadenada por hash SHA-256 capaz de señalar de forma automática cualquier registro adulterado.
-5. **Desplegar** y medir la plataforma completa mediante un comando único `docker compose up -d`, evaluando latencias, cobertura FHIR por sede (del 0 % al 100 %) y tasas de entrega del bus.
+**Palabras clave:** sistemas distribuidos, interoperabilidad clínica, HL7 v2, FHIR R4, Resolución 866 de 2021, MongoDB, teorema CAP, idempotencia.
 
 ---
 
-## 2. Marco Teórico y Conceptual
+## 1. Introducción y objetivos
 
-### 2.1 Transparencia y Fallos Parciales en Sistemas Distribuidos
-Un sistema distribuido se define como un conjunto de nodos de computación autónomos que se comunican mediante una red y se perciben por el usuario como una entidad única y coherente (Tanenbaum & Van Steen, 2017). En entornos distribuidos reales, los **fallos parciales** son inevitables: un nodo de base de datos puede colapsar o una red de telecomunicaciones puede sufrir particiones mientras los demás componentes permanecen saludables. La arquitectura debe proporcionar **transparencia de fallos**, ocultando al usuario la complejidad interna pero señalando con honestidad la completitud de la información clínica recuperada.
+### 1.1 Problema
 
-### 2.2 El Teorema CAP (Brewer)
-El teorema CAP establece que en presencia de una partición de red ($P$), un sistema distribuido debe optar entre **Consistencia Estricta ($C$)** (todos los nodos observan exactamente los mismos datos al mismo tiempo) o **Disponibilidad ($A$)** (cada petición recibe una respuesta no errónea, aunque no garantice contener la escritura más reciente). En nuestra plataforma se adopta un diseño **AP**: la indisponibilidad de la base de datos de Cartagena no debe impedir que un médico en Sincelejo atienda una emergencia; el sistema responde con las sedes disponibles y advierte explícitamente el estado parcial de la consulta.
+Cuando un paciente se atiende en Sincelejo, consulta por urgencias en Cartagena y hace controles
+en Corozal, cada sede guarda su parte de la historia en su propio sistema. Ninguna ve la historia
+completa: se repiten exámenes y se decide con información parcial. La Resolución 866 de 2021 del
+Ministerio de Salud define el conjunto de 57 datos de la historia clínica que deben poder
+intercambiarse. El reto del parcial es unificar la historia **sin reemplazar** los sistemas
+legados: cada sede conserva su base, su motor y su formato de envío (HL7 v2 o CSV).
 
-### 2.3 Propiedades ACID y Transacciones Distribuidas
-A nivel local de cada sede, las transacciones garantizan Atomicidad, Consistencia, Aislamiento y Durabilidad (ACID). Si una inserción de usuario y atención falla a la mitad (por ejemplo, por una restricción de triage inválido), el motor de base de datos ejecuta un `ROLLBACK` total impidiendo que queden registros huérfanos. A nivel global entre sedes, se evita el bloqueo costoso de protocolos pesados como *Two-Phase Commit* (2PC), confiando la coordinación a la idempotencia del HSB y al servidor FHIR central.
+En la versión 2 se tomó literalmente la heterogeneidad: por indicación del docente, las sedes no
+usan el mismo motor. Sincelejo y Corozal usan PostgreSQL; Cartagena usa MongoDB, con un documento
+por paciente y nombres de campo distintos. La plataforma no puede suponer un esquema común.
 
-### 2.4 Fragmentación Horizontal por Sede
-La tabla asistencial `atencion` se particiona horizontalmente tomando como clave de distribución la **sede de atención (`sede_id`)**. Esta fragmentación coincide en un 95 % con la localidad de referencia médica: los profesionales de Sincelejo escriben y consultan primordialmente en `pg_sede1`. La consolidación de historias inter-sede se resuelve mediante un patrón *query fan-out* en la capa de API Gateway.
+### 1.2 Objetivo general
 
-### 2.5 Estándares de Mensajería: HL7 v2 y FHIR R4
-- **HL7 v2.5:** Estándar de mensajería basado en texto delimitado por saltos de línea (delimitador `\r`), campos por `|` y componentes por `^`. Sus segmentos clave son `MSH` (metadatos de enrutamiento y clave de idempotencia en `MSH-10`), `PID` (demografía del paciente), `PV1` (visita clínica), `DG1` (diagnósticos) y `OBX` (resultados de laboratorio).
-- **HL7 FHIR R4:** Estándar de última generación basado en recursos modulares JSON orientados a servicios REST. Un **Bundle transaction** permite enviar un lote de recursos (`Patient`, `Encounter`, `Condition`, `Observation`) con operaciones `PUT` idempotentes.
+Diseñar, implementar y evaluar una plataforma distribuida que unifique la historia clínica de un
+paciente atendido en tres sedes con sistemas legados heterogéneos (HL7 v2, CSV; PostgreSQL,
+MongoDB), usando FHIR R4 y los 57 campos de la Resolución 866 de 2021, sin reemplazar los legados.
 
-### 2.6 Bus de Integración (HSB) e Idempotencia Criptográfica
-Un Health Service Bus (HSB) desacopla a los productores de datos de los consumidores. La **idempotencia** asegura que procesar un mensaje $N$ veces produzca el mismo estado en el sistema que procesarlo una sola vez. Al calcular el hash SHA-256 de la carga útil del mensaje y almacenarlo en una clave única en base de datos, cualquier reenvío posterior se identifica como `"duplicado"` sin recrear registros clínicos.
+### 1.3 Objetivos específicos
 
-### 2.7 Terminologías Semánticas: CIE-10 y LOINC
-- **CIE-10:** Clasificación Internacional de Enfermedades (10.ª revisión) para codificación diagnóstica estandarizada (`J45.9` Asma, `I10` Hipertensión).
-- **LOINC:** *Logical Observation Identifiers Names and Codes* para estandarización de pruebas de laboratorio y signos vitales (`718-7` Hemoglobina).
-
----
-
-## 3. Estado del Arte (8 Fuentes Verificadas en APA 7)
-
-A continuación se presentan las 8 fuentes de alcance global, latinoamericano y colombiano analizadas críticamente:
-
-1. **Bender, D., & Sartipi, K. (2013).** *HL7 FHIR: An agile and restful approach to healthcare information exchange.* Proceedings of the 26th IEEE International Symposium on Computer-Based Medical Systems, 326–331. https://doi.org/10.1109/CBMS.2013.6627810  
-   *Aporte:* Demuestra la superioridad técnica del paradigma RESTful de FHIR R4 frente a la complejidad sintáctica de HL7 v2 para la interoperabilidad semántica.
-2. **Centro Nacional en Sistemas de Información en Salud (CENS). (2022).** *Guía de interoperabilidad clínica con HL7 FHIR en redes asistenciales.* CENS Chile.  
-   *Aporte:* Documenta la reducción de errores de interpretación clínica mediante el uso combinado de recursos `Observation` con LOINC y `Condition` con CIE-10.
-3. **HAPI FHIR Community. (2024).** *HAPI FHIR: The open source FHIR API for Java (v7.2.0).* Smile Digital Health.  
-   *Aporte:* Valida el uso del endpoint `/fhir/Bundle/$validate` y CapabilityStatement para certificar recursos bajo especificación oficial R4.
-4. **Hohpe, G., & Woolf, B. (2020).** *Enterprise integration patterns: Designing, building, and deploying messaging solutions* (2.ª ed.). Addison-Wesley Professional.  
-   *Aporte:* Establece los fundamentos de diseño para *Scatter-Gather*, *Idempotent Receiver* y *Dead Letter Channel* implementados en el HSB.
-5. **Ministerio de Salud de la Nación Argentina. (2020).** *Estrategia nacional de salud digital: Guía de implementación del Perfil Argentino de FHIR.* Ministerio de Salud.  
-   *Aporte:* Evidencia la efectividad de los identificadores deterministas en Bundle transactions para evitar duplicados en sistemas federales de salud.
-6. **Ministerio de Salud y Protección Social de Colombia. (2021).** *Resolución 866 de 2021: Por la cual se reglamenta el conjunto de datos de la Historia Clínica Electrónica y su interoperabilidad.* Diario Oficial No. 51.688.  
-   *Aporte:* Marco regulatorio nacional que exige codificación CIE-10 obligatoria y cédula de ciudadanía como clave de identidad.
-7. **NextGen Healthcare. (2023).** *Mirth Connect integration engine technical reference guide.* NextGen Healthcare Inc.  
-   *Aporte:* Análisis comparativo que resalta las limitaciones de memoria (>1.5 GB JVM) de motores de arrastrar y soltar frente a middlewares ligeros.
-8. **OpenHIE Consortium. (2022).** *Open health information mediator (OpenHIM) architecture specification.* Jembi Health Systems.  
-   *Aporte:* Demuestra la conveniencia de separar la mediación de seguridad y auditoría de la capa de almacenamiento en arquitecturas de salud para países en desarrollo.
-
-### Comparativa de Soluciones Evaluadas
-
-| Característica | HAPI FHIR R4 | Mirth Connect | Apache Camel | HSB Propio (FastAPI) |
-|----------------|:------------:|:-------------:|:------------:|:--------------------:|
-| **Compatibilidad FHIR** | Nativa | Adaptada | Adaptada | Cliente nativo REST |
-| **Parsing HL7 v2** | Java library | Visual / JS | DSL Camel | Modular en Python |
-| **Curva de Aprendizaje**| Media | Media-Alta | Alta | Baja (Pydantic / Python) |
-| **Consumo de Memoria** | ~800 MB | >1.5 GB | ~900 MB | **<90 MB** |
-| **Observabilidad** | Spring Actuator| Dashboard GUI | JMX / Micrometer | **Prometheus `/metrics`** |
-| **Licenciamiento** | Apache 2.0 | MPL 2.0 | Apache 2.0 | **Código Abierto MIT** |
+1. **Traducir** mensajes HL7 v2 (ADT^A01, ADT^A03, ORU^R01), filas CSV legadas y registros JSON de
+   las tres sedes a un registro canónico de 57 campos, y medir la cobertura de campos por paciente
+   (meta: 100 % de los campos obligatorios en el mensaje de prueba completo).
+2. **Publicar** cada atención en HAPI FHIR R4 como Bundle `transaction` con `PUT` e ids
+   deterministas, con 0 errores en `$validate` y 0 recursos duplicados al reenviar un mensaje.
+3. **Reducir a una sola consulta** la búsqueda de la historia de un paciente con registros en tres
+   sedes y dos motores, que siga respondiendo si una sede cae y avise que el reporte está incompleto.
+4. **Controlar el acceso y la trazabilidad**: cuatro roles con permisos validados en la API (403
+   auditado), auditoría encadenada por hash que señale el evento alterado exacto, y entrega
+   automática de un mensaje cuando HAPI vuelve tras una caída.
 
 ---
 
-## 4. Solución Propuesta, Metodología Ágil y Roadmap
+## 2. Marco teórico y conceptual
 
-La solución se concibió bajo una metodología iterativa e incremental de 5 fases, con entregables funcionales en cada etapa y verificación cruzada entre los integrantes Jose Canchila y Sharit Manjarrez.
+**Sistema distribuido, transparencia y fallos parciales.** Un sistema distribuido es un conjunto de
+computadores autónomos que el usuario percibe como uno solo (Tanenbaum y Van Steen, 2017). Lo
+distintivo es el fallo parcial: una sede puede caer mientras las otras siguen. La plataforma no
+oculta ese fallo: responde con lo que tiene y dice qué falta.
 
-### Roadmap de las 5 Fases
-1. **Fase 1 (Análisis y UML):** Delimitación del problema, 4 diagramas UML coherentes, arquitectura de 3 capas y tabla de mapeo de 22 campos clínicos.
-2. **Fase 2 (Datos y FHIR):** Despliegue de los 3 nodos PostgreSQL, servidor HAPI FHIR R4, normalizador determinista y demostración ACID.
-3. **Fase 3 (HSB y Middleware):** Construcción del bus con endpoints `/hsb/hl7` y `/hsb/csv`, reintentos exponenciales, idempotencia y procesamiento de los 4 ejemplos oficiales.
-4. **Fase 4 (Seguridad y Resiliencia):** Autenticación JWT, matriz RBAC de 4 roles, auditoría inmutable por hash SHA-256, resiliencia ante caídas y 4 vistas web accesibles.
-5. **Fase 5 (Prototipo Final y Sustentación):** Integración completa, pruebas de arranque limpio desde cero (`docker compose down -v && docker compose up -d`), mediciones operacionales, guion de sustentación y etiquetado `v1.0`.
+**Teorema CAP.** Ante una partición de red, un sistema distribuido elige entre consistencia (todas
+las réplicas ven el mismo dato) y disponibilidad (toda petición recibe respuesta). La consulta
+unificada es **AP**: si la sede 2 no responde, la historia se arma con las sedes 1 y 3 y se marca
+`reporte_completo = false`. Lo que se sacrifica es ver en ese momento las atenciones de la sede caída.
 
----
+**ACID.** Atomicidad, consistencia, aislamiento y durabilidad de una transacción local. En las sedes
+PostgreSQL, el usuario, la atención, los diagnósticos, las tecnologías y el egreso se guardan en una
+sola transacción. En MongoDB la unidad atómica es el documento: como la atención completa está
+embebida en el documento del paciente, guardarla es **una** escritura de un solo documento, atómica
+sin transacciones multi-documento.
 
-## 5. Modelado UML y Reglas de Validación
+**Fragmentación horizontal.** Partir los datos por filas según un criterio. Aquí el criterio es la
+sede de la atención: cada sede guarda sus atenciones. La clave común entre sedes es el número de
+documento del paciente.
 
-El diseño conceptual y estructural se sustentó en 4 diagramas UML rigurosamente coherentes entre sí:
-- **Casos de Uso (14 casos, 5 actores):** Define las fronteras de acción de Paciente, Admisionista, Médico, Auditor y Sistema de Sede.
-- **Secuencia del HSB:** Flujo temporal desde la recepción del mensaje HL7/CSV hasta su persistencia dual (HAPI FHIR primero, nodo de sede después) y ramificaciones de reintento.
-- **Diagrama de Clases (12 entidades):** Modelado homogéneo de `Usuario`, `Atencion`, `Diagnostico`, `TecnologiaSalud`, `Egreso`, `ProfesionalSalud`, `MensajeBus` y `EventoAuditoria`.
-- **Diagrama de Estados del Mensaje:** Ciclo de vida estricto: `RECIBIDO` $\to$ `VALIDADO` $\to$ `TRANSFORMADO` $\to$ `ENTREGADO` / `REINTENTANDO` $\to$ `MUERTO` $\to$ `DUPLICADO`.
+**HL7 v2.** Mensajería por segmentos de texto (`MSH`, `PID`, `PV1`, `DG1`, `OBX`…), campos
+separados por `|` y componentes por `^`. `MSH-10` identifica el mensaje. Los datos que el estándar no
+trae se envían en **segmentos Z**, definidos por acuerdo entre las partes.
 
-### Tabla de Reglas de Validación Pre-Transformación
+**FHIR R4.** Estándar de HL7 basado en recursos (Patient, Encounter, Condition, Observation…) que se
+intercambian por REST en JSON (HL7 International, 2019). Un **Bundle** de tipo `transaction` agrupa
+recursos que el servidor procesa como una unidad. Un **perfil** restringe un recurso para un uso
+concreto; este proyecto usa extensiones propias, no un perfil publicado.
 
-| Campo | Regla de Negocio | Acción en caso de Incumplimiento |
-|-------|------------------|----------------------------------|
-| `documento_id` | Caracteres exclusivamente numéricos; longitud de 4 a 15 dígitos. | Rechazo con motivo: `"documento no numérico"` o `"documento fuera de rango"`. |
-| `nombre_completo`| Cadena de caracteres no vacía; mínimo 2 caracteres. | Rechazo con motivo: `"nombre no puede ser vacío"`. |
-| `sexo` | Restringido estrictamente a `M`, `F` u `O`. | Rechazo con motivo: `"sexo no válido: debe ser M, F u O"`. |
-| `sede_origen` | Entero positivo acotado al dominio `{1, 2, 3}`. | Rechazo con motivo: `"sede no válida o desconocida"`. |
-| `cie10_codigo` (HL7) | Debe pertenecer al sistema `I10` y cumplir la expresión regular `^[A-Z][0-9]{2}(\.[0-9]{1,4})?$`. | Rechazo con motivo: `"diagnóstico sin mapeo a CIE-10"`. |
-| `dx_local` (CSV) | El término en texto libre debe existir en la tabla `05_ref_terminologia.csv`. | Rechazo con motivo: `"diagnóstico sin mapeo a CIE-10: '<dx_local>'"`. |
-| `loinc_codigo` | Expresión regular numérica estándar `^[0-9]+-[0-9]+$`. | Rechazo con motivo: `"código LOINC inválido"`. |
+**Bus de integración (HSB) e idempotencia.** Un bus desacopla a quien envía de quien recibe y
+concentra traducción, validación, enrutamiento y reintentos (Hohpe y Woolf, 2003). Una operación es
+**idempotente** si repetirla deja el mismo estado que hacerla una vez; es lo que permite reintentar
+sin miedo a duplicar.
 
----
-
-## 6. Proceso de Desarrollo e Integración Continua (CI/CD)
-
-El desarrollo siguió principios de ingeniería de software orientada a pruebas (*Test-Driven Development*):
-- **Pruebas Unitarias del Normalizador (`tests/fase2/test_normalizer.py`):** 6 casos de prueba que validan la generación de IDs deterministas (`pac-<doc>`, `enc-<visita>`), formato de fechas ISO 8601 y rechazo de diagnósticos inválidos.
-- **Pruebas de Integración del Bus (`tests/fase3/test_hsb_integration.py`):** Validación automatizada contra los 4 archivos contractuales de `ejemplos/`, comprobando entrega, rechazos por triples motivos y detección de duplicados.
-- **Pruebas de Seguridad y Resiliencia (`tests/fase4/test_security_resilience.py`):** Evaluación de excepciones HTTP 403 por rol, verificación matemática de la cadena SHA-256 ante alteraciones deliberadas y simulación de nodo caído.
-- **Gestión de Versiones en Git:** Historial balanceado con commits independientes y verificables de Jose Canchila (`jose18000`) y Sharit Manjarrez a lo largo de todas las fases, culminando con la etiqueta `v1.0`.
+**Terminologías.** CIE-10 codifica diagnósticos (`J45.9` asma, `I10` hipertensión esencial). LOINC
+codifica pruebas de laboratorio (`718-7` hemoglobina).
 
 ---
 
-## 7. Diseño de Interfaces y Accesibilidad (WCAG 2.1)
+## 3. Estado del arte
 
-Se implementaron las 4 interfaces web exigidas mediante plantillas Jinja2 integradas en la API Gateway:
-1. **Vista Paciente (`/paciente`):** Autenticación mediante su documento de identidad; visualización cronológica unificada de sus atenciones con sede explícita; botón para descargar su expediente en Bundle FHIR R4; tabla de trazabilidad de accesos (quién consultó sus datos, cuándo y con qué sello hash).
-2. **Vista Admisionista (`/admision`):** Búsqueda de pacientes con detección de duplicados entre sedes; formulario de admisión con clasificación de triage (1 a 5) y selección de sede; monitor de estados de mensajes del HSB. **Aislamiento clínico:** No presenta diagnósticos ni notas médicas.
-3. **Vista Médico (`/medico`):** Búsqueda federada de cualquier paciente; consulta de visitas, diagnósticos CIE-10 y laboratorios LOINC; formulario de evolución clínica y egreso médico que genera y retorna un sello de integridad SHA-256.
-4. **Vista Reporte de HC y Tablero (`/reporte`):** Reporte clínico agrupado por sede con advertencia en caso de caída; sello de integridad del documento; botones de impresión y descarga FHIR; Tablero de Estado en tiempo real con disponibilidad de nodos, cobertura FHIR por sede (%), rendimiento del bus y verificador criptográfico de auditoría con botón de simulación de alteración en vivo.
+Fuentes de alcance global, latinoamericano y colombiano (referencias completas al final):
 
-**Accesibilidad:** Ratios de contraste superiores a 4.5:1, etiquetas semánticas explícitas `<label for>`, navegación completa mediante tabulador de teclado y mensajes dinámicos con atributos ARIA.
+| # | Fuente | Alcance | Qué tomamos para el proyecto |
+|---|---|---|---|
+| 1 | Bender y Sartipi (2013) | Global | Argumentos a favor de FHIR (recursos REST) frente a la sintaxis de HL7 v2: base para publicar en FHIR y conservar HL7 v2 solo como formato de entrada de los legados. |
+| 2 | Centro Nacional en Sistemas de Información en Salud (2022) | Latinoamérica (Chile) | Uso de Observation con LOINC y Condition con CIE-10 en redes asistenciales. |
+| 3 | HAPI FHIR Community (2024) | Global | Servidor FHIR R4 de referencia, operación `$validate` y Bundles `transaction`. |
+| 4 | Hohpe y Woolf (2003) | Global | Patrones *Idempotent Receiver*, *Dead Letter Channel*, *Scatter-Gather* y *Canonical Data Model*, que el HSB implementa. |
+| 5 | Ministerio de Salud de la Nación Argentina (2020) | Latinoamérica (Argentina) | Experiencia nacional de implementación de FHIR con identificadores estables. |
+| 6 | Ministerio de Salud y Protección Social (2021) | Colombia | Resolución 866: los 57 datos de la historia clínica interoperable y sus dominios. |
+| 7 | NextGen Healthcare (2023) | Global | Mirth Connect como motor de integración HL7 de referencia. |
+| 8 | OpenHIE Consortium (2022) | Global / países en desarrollo | OpenHIM: separar la mediación (seguridad, auditoría) del almacenamiento. |
+| 9 | HL7 International (2019) | Global | Especificación FHIR R4: recursos, Bundle, transacciones y extensiones. |
 
----
+### Comparación de herramientas
 
-## 8. Prototipo Final y Matriz de Aceptación (RF1 a RF6)
+| Criterio | HAPI FHIR | Mirth Connect | OpenHIM | Apache Camel | HSB propio (FastAPI) |
+|---|---|---|---|---|---|
+| Papel | Servidor FHIR | Motor de integración HL7 | Mediador de intercambio | Marco de integración | Bus del proyecto |
+| FHIR R4 | Nativo | Por conectores | Hacia un servidor FHIR externo | Por componentes | Cliente REST hacia HAPI |
+| HL7 v2 | Librería de parsing | Nativo (canales) | No es su foco | Componente HL7 | Traductor propio guiado por catálogo |
+| Plataforma | Java | Java | Node.js | Java | Python |
+| Cómo se configura | Código / propiedades | Interfaz gráfica de canales | Consola web | DSL / código | Código y catálogo de 57 campos |
+| Uso en el proyecto | **Sí** (servidor FHIR) | No | No | No | **Sí** (bus) |
 
-| Requisito Funcional | Criterio de Aceptación | Estado en Prototipo v1.0 | Evidencia / Endpoint |
-|---------------------|------------------------|:------------------------:|----------------------|
-| **RF1: Ingesta Multiformato** | Ingerir HL7 v2 y CSV de las 3 sedes. | **100 % CUMPLIDO** | `POST /hsb/hl7` y `POST /hsb/csv?sede=N` |
-| **RF2: Normalización FHIR R4** | Bundle transaction con PUT, CIE-10 y LOINC. | **100 % CUMPLIDO** | `fhir/normalizer.py`, validado en HAPI FHIR (`:8090`) |
-| **RF3: HSB Resiliente** | Enrutamiento, validación, reintentos con backoff e idempotencia. | **100 % CUMPLIDO** | `hsb/queue_manager.py`, reintentos ($1\text{ s}, 2\text{ s}, 4\text{ s}, 8\text{ s}$) y Dead Letter |
-| **RF4: Datos Distribuidos** | 3 nodos Postgres y consulta unificada *scatter-gather*. | **100 % CUMPLIDO** | `pg_sede1..3` (:5433, :5434, :5435), `db/consulta_unificada.py` |
-| **RF5: Seguridad y Auditoría** | Autenticación JWT, 4 roles RBAC y hash SHA-256 encadenado. | **100 % CUMPLIDO** | `app/auth.py`, `app/rbac.py`, `app/audit.py` (verificador inmutable) |
-| **RF6: Cuatro Vistas Web** | Paciente, Admisionista, Médico y Reporte & Tablero. | **100 % CUMPLIDO** | `app/templates/` servidas por API Gateway en `:8000` |
-
----
-
-## 9. Viabilidad Técnica y Cumplimiento Normativo
-
-### 9.1 Escalabilidad a Gran Escala (100×)
-- **Implementado:** Despliegue contenerizado mediante Docker Compose con 6 servicios desacoplados (`pg_sede1`, `pg_sede2`, `pg_sede3`, `hapi_fhir`, `hsb_bus`, `api_gateway`).
-- **Propuesto para 100×:** Réplicas sin estado del HSB balanceadas por NGINX; migración de colas locales a clúster de **Apache Kafka** particionado por sede; particionamiento de bases de datos mediante **Citus** en clúster multworker; manifiestos de Kubernetes con *Horizontal Pod Autoscaler* (HPA) listos en `infra/k8s/`.
-
-### 9.2 Cumplimiento Ley 1581 de 2012 (Habeas Data Clínico)
-- **Principio de Libertad y Finalidad:** El paciente puede auditar en todo momento qué profesional accedió a sus datos mediante su portal personal.
-- **Principio de Veracidad y Calidad:** La auditoría encadenada por hash SHA-256 garantiza que los registros no puedan ser adulterados retrospectivamente.
-- **Seguridad y Confidencialidad:** Aislamiento estricto de roles en la API (el admisionista no accede a datos clínicos sensibles).
+Se usa HAPI porque es la referencia abierta de FHIR R4 y el laboratorio ya la conocía. Para el bus se
+descartaron Mirth, OpenHIM y Camel porque cada integrante debe poder explicar y modificar en vivo
+cualquier parte (regla del parcial) y porque agregan otra plataforma de ejecución; a cambio, el
+proyecto renuncia a sus herramientas gráficas y conectores ya hechos.
 
 ---
 
-## 10. Resultados Medidos y Discusión
+## 4. Solución propuesta y metodología
 
-Se ejecutaron pruebas de estrés y recolección de telemetría sobre el entorno de despliegue:
+### 4.1 Arquitectura final
 
-| Métrica Evaluada | Valor Medido | Interpretación y Comparación con la Literatura |
-|------------------|:------------:|------------------------------------------------|
-| **Latencia media consulta unificada (3 sedes)** | **18,4 ms** | Muy por debajo del umbral objetivo de 500 ms; comparable con sistemas federados modernos (Bender & Sartipi, 2013). |
-| **Latencia media consulta degradada (1 sede caída)** | **12,1 ms** | El *timeout* no bloqueante descarta la sede inactiva en 2 segundos y consolida las sedes activas en milisegundos. |
-| **Cobertura FHIR inicial** | **0,0 %** | Todos los registros legados iniciales poseen `fhir_patient_id = NULL`. |
-| **Cobertura FHIR tras migración/ingesta** | **100,0 %** | Tras la entrega del HSB, los pacientes cuentan con su recurso FHIR determinista. |
-| **Tasa de detección de duplicados** | **100,0 %** | El 100 % de los reenvíos de mensajes HL7 idénticos fueron reconocidos como `"duplicado"` sin crear filas espurias. |
-| **Efectividad del verificador de auditoría** | **100,0 %** | Detectó de forma unívoca el bloque exacto adulterado en todas las iteraciones de prueba. |
+Siete contenedores, levantados con `docker compose down -v && docker compose up -d --build`:
+
+| Contenedor | Papel | Puerto en el anfitrión |
+|---|---|---|
+| `pg_sede1` | Sede 1 Sincelejo — PostgreSQL 16 (`clinica_sincelejo`) | 5433 |
+| `mongo_sede2` | Sede 2 Cartagena — MongoDB 7 (`clinica_cartagena`), un documento por paciente | 27018 |
+| `pg_sede3` | Sede 3 Corozal — PostgreSQL 16 (`clinica_corozal`) | 5435 |
+| `pg_central` | Cadena de auditoría (`evento_auditoria`); no es una sede | 5436 |
+| `hapi_fhir_r4` | HAPI FHIR R4 v7.2.0 | 8090 |
+| `hsb_bus` | Health Service Bus | 8001 |
+| `api_gateway` | API Gateway y 4 vistas por rol | 8000 |
+
+```
+ HL7 v2 ─┐                          ┌─> HAPI FHIR R4 (Bundle transaction, PUT)
+ CSV    ─┼─> HSB ─> traductor 57 ───┼─> Sede 1 PostgreSQL
+ JSON   ─┘   valida, idempotencia,  ├─> Sede 2 MongoDB
+             cola y reintentos      └─> Sede 3 PostgreSQL
+                                          ▲
+ 4 vistas por rol ─> API Gateway ─────────┘  consulta unificada en paralelo
+                         └─> pg_central: auditoría encadenada por hash
+```
+
+El diagrama Mermaid completo y la tabla componente / requisito / justificación están en
+[`fase1/arquitectura/arquitectura_y_justificacion.md`](fase1/arquitectura/arquitectura_y_justificacion.md).
+
+### 4.2 Capa de datos: por qué PostgreSQL y MongoDB
+
+- **Un nodo por sede (RF4).** Cada IPS conserva su base; no hay base central de datos clínicos. La
+  única base central guarda la auditoría.
+- **Motores distintos.** Sedes 1 y 3 usan el esquema relacional de 57 campos (`db/schema.sql`):
+  `usuario`, `atencion`, `diagnostico`, `tecnologia_salud`, `egreso`, `profesional_salud`, `sede`,
+  `mensaje_bus`. La sede 2 usa la colección `pacientes` con un documento por paciente y sus
+  atenciones embebidas (dentro de cada una: diagnósticos, tecnologías y egreso), más
+  `mensajes_bus`, `profesionales` y `sedes`. Los nombres no coinciden a propósito
+  (`identificacion.numero` frente a `documento_id`, `ingreso.fecha` frente a `fecha_ingreso`).
+- **Repositorio con una sola interfaz.** `RepositorioPostgres` y `RepositorioMongo`
+  (`db/repositorio.py`) exponen `guardar`, `historia`, `cobertura_fhir` y los métodos de
+  `mensaje_bus`, y hablan siempre en el registro canónico. El bus y la API no saben qué motor tiene
+  cada sede.
+- **ACID local.** En PostgreSQL, `guardar` hace UPSERT de las cinco tablas en una transacción. La
+  demostración `db/demo_acid.sql` inserta un usuario y luego una atención con
+  `clasificacion_triage = '9'`: el `CHECK` falla y PostgreSQL revierte todo, sin dejar al usuario
+  huérfano. En MongoDB, `guardar` reemplaza el documento completo del paciente con `replace_one`,
+  que es atómico por ser un solo documento.
+- **CAP entre sedes.** No hay transacción distribuida entre sedes ni entre HAPI y la sede. La
+  lectura es AP (ver §2). La escritura es eventualmente consistente: el bus escribe en HAPI y luego
+  en la sede; si la sede falla, el mensaje queda en REINTENTANDO y se completa cuando vuelve.
+  Durante ese intervalo HAPI tiene el dato y la sede no.
+- **MongoDB sin réplica.** `mongo_sede2` es un nodo único (sin *replica set*): no hay
+  transacciones multi-documento ni conmutación por fallo. Si cae, la sede 2 no está disponible; la
+  consulta sigue con las otras dos y los mensajes de la sede 2 esperan en REINTENTANDO.
+
+### 4.3 Traductor universal de 57 campos (`traductor/`)
+
+- `catalogo_57.py` es la fuente única de verdad. Cada uno de los 57 campos dice de qué segmento HL7
+  sale, qué columna CSV lo trae, en qué `tabla.columna` de PostgreSQL y en qué ruta del documento
+  MongoDB queda, y a qué elemento FHIR corresponde, además de si es obligatorio (23 lo son) y su
+  dominio.
+- `dominios.py` tiene los códigos permitidos y los sinónimos que usa cada sede (`E` de PV1-2 →
+  entorno `01` Urgencias, triage `III` → `3`, sexo `I` → `O`, vía `PO` → `01` Oral).
+- `traductor.py` hace HL7 / CSV / JSON → **registro canónico** → filas PostgreSQL / documento
+  MongoDB, y de vuelta. El canónico es el pivote: con 3 entradas y 3 salidas se escriben 6
+  traducciones y no 9.
+- **Segmentos Z** para lo que HL7 v2.5 no trae: `ZPI` (género, ocupación, voluntad anticipada,
+  discapacidad, comunidad étnica, zona), `ZPV` (modalidad, fecha y clase de triage), `ZRX`
+  (finalidad del medicamento) y `ZEG` (diagnóstico de muerte, incapacidad, licencia, antecedentes,
+  riesgos, responsable del egreso).
+- **Diagnósticos 33–39** como filas con `rol` INGRESO / EGRESO / RELACIONADO y `orden`.
+- **Derivados:** edad y unidad de edad (de la fecha de nacimiento) y código del prestador (del REPS
+  sintético de la sede).
+- **Cobertura:** `cobertura_57()` cuenta, para un paciente, los campos con valor en el usuario o en
+  cualquiera de sus atenciones de cualquier sede, y devuelve los faltantes y si son obligatorios.
+- El mapeo completo se genera con `python -m traductor.generar_mapeo` en
+  [`mapeo_57_campos.md`](mapeo_57_campos.md).
+
+### 4.4 HSB
+
+Entradas `POST /hsb/hl7`, `POST /hsb/csv?sede=N` y `POST /hsb/json?sede=N`; operación
+`GET /hsb/mensajes`, `GET /hsb/catalogo`, `POST /hsb/reencolar/{id}`, `GET /health` y `GET /metrics`.
+Flujo (`hsb/ingesta.py`):
+
+1. **Traducir** al registro canónico.
+2. **Idempotencia:** busca `MSH-10` (o el hash SHA-256 de la fila CSV / del JSON) en `mensaje_bus`
+   de la sede; si ya está ENTREGADO, TRANSFORMADO o REINTENTANDO responde `duplicado`.
+3. **Validar:** documento de 4 a 15 dígitos, nombre, sexo M/F/O, sede 1–3, fechas, CIE-10 y LOINC.
+   Si falla, RECHAZADO con todos los motivos.
+4. **Normalizar** a Bundle `transaction` con `PUT` e ids deterministas: `pac-<doc>`, `enc-<visita>`,
+   `cond-<visita>-<rol>-<cie10>`, `obs-<visita>-<loinc>`, `med-<visita>-…`, `prac-<código>`,
+   `org-sede-<n>`, `alg-<doc>`. Recursos: Organization, Practitioner, Patient, Encounter,
+   Condition (CIE-10), Observation (LOINC), MedicationRequest y AllergyIntolerance; extensiones
+   bajo `https://minsalud.gov.co/fhir/StructureDefinition/`.
+5. **Entregar:** primero HAPI, después la sede; ambos pasos son idempotentes.
+6. **Reintentar** en segundo plano con espera creciente 2, 4, 8, 16, 32, 64 s
+   (`HSB_MAX_RETRIES=7`, `HSB_RETRY_BASE_SECONDS=2`); al agotarlos, MUERTO, y se puede reencolar.
+   Los **errores de datos** (restricción violada en la sede, HTTP 4xx de HAPI) van directo a MUERTO:
+   reintentarlos no los arregla. Al reiniciar, el bus recupera de las sedes los mensajes que quedaron
+   en REINTENTANDO o TRANSFORMADO.
+
+### 4.5 Seguridad
+
+- **JWT HS256** (60 min) emitido en `/auth/login`; viaja en cookie para las vistas o como `Bearer`.
+- **Cuatro roles** con permisos validados en la API: paciente (solo su historia), admisionista
+  (búsqueda y admisión, sin diagnósticos), médico (historia unificada y escrituras clínicas),
+  auditor (reporte, tablero y verificador). Un acceso no permitido responde **403** y deja un evento
+  `ACCESO_DENEGADO`.
+- **Auditoría encadenada** en `pg_central.evento_auditoria`:
+  `hash_propio = SHA-256(hash_anterior | indice | timestamp | usuario | rol | tipo | recurso | resultado | detalle)`.
+  La inserción toma `pg_advisory_xact_lock` para que dos peticiones simultáneas no enlacen al mismo
+  hash anterior. El verificador recorre la cadena y devuelve el **primer** evento alterado.
+- **Sello de escritura:** cada escritura del médico registra primero su evento; el hash de ese
+  evento es el sello que se devuelve y que el egreso guarda en `sello_hash`.
+- **Regla de oro:** las vistas no hablan con las bases; las escrituras viajan al HSB por `/hsb/json`.
+
+### 4.6 Metodología y hoja de ruta
+
+Trabajo iterativo en cinco fases, cada una con entregable funcional y revisión cruzada entre los dos
+integrantes; las correcciones entre fases se anotan en la bitácora.
+
+| Fase | Entregable | Estado |
+|---|---|---|
+| 1. Análisis, UML y diseño | Informe, 4 diagramas, arquitectura, mapeo | Entregada; diagramas actualizados a v2 |
+| 2. Datos distribuidos y FHIR | Nodos por sede, normalizador, ACID | Entregada; en v2 esquema de 57 campos y sede 2 en MongoDB |
+| 3. HSB | Bus HL7/CSV con reintentos e idempotencia | Entregada; en v2 cola en segundo plano, recuperación y `/hsb/json` |
+| 4. Seguridad y resiliencia | JWT, roles, auditoría, caída de sede | Entregada; en v2 auditoría persistida en `pg_central` |
+| 5. Prototipo final | 4 vistas, informe, sustentación | Este informe |
 
 ---
 
-## 11. Conclusiones y Trabajo Futuro
+## 5. Modelado UML y reglas de validación
 
-### 11.1 Conclusiones
-1. Es técnica y económicamente viable unificar la historia clínica fraccionada de una red hospitalaria sin sustituir sus sistemas legados, empleando un bus de integración ligero (HSB) y el estándar FHIR R4.
-2. La adopción del modelo AP del teorema CAP protege la continuidad del servicio asistencial: la caída de Cartagena o Corozal no suspende las operaciones de Sincelejo.
-3. La combinación de identificadores deterministas (`pac-<doc>`, `enc-<visita>`) y operaciones transaccionales `PUT` erradica el riesgo de duplicidad de historias ante reintentos de red.
-4. La auditoría encadenada por hash SHA-256 confiere garantías de inmutabilidad equivalentes a una cadena de bloques sin el costo de consenso computacional ni la latencia de minería.
+Los cuatro diagramas están en Mermaid en `docs/fase1/diagramas/` y son coherentes entre sí (los
+actores del caso de uso aparecen en la secuencia, sus clases existen en el diagrama de clases y los
+estados son los valores de `MensajeBus.estado`):
 
-### 11.2 Trabajo Futuro
-- Implementar anclaje de raíces de hash de auditoría en la red permissionada Hyperledger Fabric del laboratorio.
-- Incorporar terminación TLS 1.3 con certificados X.509 y mTLS entre el HSB y los legados hospitalarios.
-- Extender el normalizador a perfiles FHIR colombianos específicos reglamentados por el Ministerio de Salud.
+- [Casos de uso](fase1/diagramas/01_casos_uso.md): 5 actores (paciente, admisionista, médico,
+  auditor, sistema de sede) y 17 casos de uso.
+- [Secuencia](fase1/diagramas/02_secuencia_hsb.md): sede → HSB → traductor → `mensaje_bus` →
+  validador → normalizador → HAPI → repositorio (PostgreSQL o MongoDB) → consulta y auditoría, con
+  los caminos de duplicado, rechazo, reintento y error de datos.
+- [Clases](fase1/diagramas/03_clases.md): 15 clases, entre ellas `Usuario`, `Atencion`,
+  `Diagnostico`, `TecnologiaSalud`, `Egreso`, `ProfesionalSalud`, `Sede`, `MensajeBus`,
+  `EventoAuditoria`, `Campo`, `RegistroCanonico` y `RepositorioSede` ← `RepositorioPostgres` /
+  `RepositorioMongo`.
+- [Estados](fase1/diagramas/04_estados_mensaje.md): RECIBIDO, VALIDADO, TRANSFORMADO, ENTREGADO,
+  RECHAZADO, REINTENTANDO y MUERTO, con reencolar y "error de datos → MUERTO".
+
+### Tabla de reglas de validación (antes de transformar)
+
+| Campo | Regla | Motivo de rechazo |
+|---|---|---|
+| Documento (campo 2) | No vacío, solo dígitos, 4 a 15 | `documento no numérico` / `documento fuera de rango: tiene N dígitos…` |
+| Nombre (4) | No vacío | `nombre no puede ser vacío` |
+| Sexo (8) | `M`, `F` u `O` (tras sinónimos) | `sexo no válido ('X'): debe ser M, F u O` |
+| Sede | 1, 2 o 3 (`MSH-4` o `?sede=N`) | `sede no válida o desconocida` |
+| Fecha de nacimiento (5) | Válida y no futura | `fecha de nacimiento no válida` / `en el futuro` |
+| Fecha de ingreso (17) | Válida si viene | `fecha de ingreso no válida` |
+| Diagnósticos (34, 36–39) | CIE-10 `^[A-Z][0-9]{2}(\.[0-9]{1,4})?$`; en HL7 no se acepta sistema local `L`; en CSV el texto local se mapea con `05_ref_terminologia.csv` | `diagnóstico sin mapeo a CIE-10` |
+| Laboratorio | LOINC `^[0-9]+-[0-9]+$` | `código LOINC inválido` |
+| Medicamento (25) | Descripción presente | `medicamento sin descripción (campo 25)` |
+
+Un valor opcional fuera de su dominio no rechaza el mensaje: el traductor lo omite y el bus
+devuelve una advertencia.
 
 ---
 
-## Referencias en Formato APA 7
+## 6. Proceso de desarrollo
 
-- Bender, D., & Sartipi, K. (2013). HL7 FHIR: An agile and restful approach to healthcare information exchange. *Proceedings of the 26th IEEE International Symposium on Computer-Based Medical Systems*, 326–331. https://doi.org/10.1109/CBMS.2013.6627810
-- Centro Nacional en Sistemas de Información en Salud. (2022). *Guía de interoperabilidad clínica con HL7 FHIR en redes asistenciales*. CENS Chile.
-- HAPI FHIR Community. (2024). *HAPI FHIR: The open source FHIR API for Java (v7.2.0)*. Smile Digital Health. https://hapifhir.io
-- Hohpe, G., & Woolf, B. (2020). *Enterprise integration patterns: Designing, building, and deploying messaging solutions* (2.ª ed.). Addison-Wesley Professional.
-- Ministerio de Salud de la Nación Argentina. (2020). *Estrategia nacional de salud digital: Guía de implementación del Perfil Argentino de FHIR*. Ministerio de Salud de la Nación.
-- Ministerio de Salud y Protección Social de Colombia. (2021). *Resolución 866 de 2021: Por la cual se reglamenta el conjunto de datos de la Historia Clínica Electrónica y su interoperabilidad*. Diario Oficial No. 51.688.
-- NextGen Healthcare. (2023). *Mirth Connect integration engine technical reference guide*. NextGen Healthcare Inc.
-- OpenHIE Consortium. (2022). *Open health information mediator (OpenHIM) architecture specification*. Jembi Health Systems.
-- Tanenbaum, A. S., & Van Steen, M. (2017). *Distributed systems: Principles and paradigms* (3.ª ed.). CreateSpace Independent Publishing.
+- **Análisis y diseño (Fase 1):** problema, UML, arquitectura y mapeo de campos.
+- **Desarrollo por fases:** cada fase partió del código de la anterior. En la v2 se reescribieron la
+  capa de datos (57 campos, MongoDB), el bus (cola persistente) y la auditoría (persistida), y se
+  agregó el traductor. Las correcciones entre fases están en la bitácora (`docs/bitacora.md`).
+- **Pruebas:** 36 pruebas automatizadas con `pytest`, todas pasan:
+
+  | Suite | Pruebas | Qué cubre |
+  |---|---|---|
+  | `tests/fase2/test_normalizer.py` | 8 | Recursos FHIR, ids deterministas, referencias internas, caso inválido |
+  | `tests/fase2/test_traductor_57.py` | 10 | Catálogo de 57, esquema SQL frente al catálogo, ida y vuelta MongoDB, CSV, JSON por número de campo |
+  | `tests/fase3/test_hsb_integration.py` | 10 | Los 4 ejemplos oficiales, idempotencia, reintento, muerto y reencolar, sede caída |
+  | `tests/fase4/test_security_resilience.py` | 8 | Permisos por rol (403 y auditoría), cadena de hash y alteración, resiliencia |
+
+  Además se hicieron las pruebas en vivo de la sección 11 sobre Docker.
+- **Despliegue:** Docker Compose con un solo comando; imágenes del HSB y la API construidas desde el
+  repositorio. Manifiestos de Kubernetes para Minikube en `infra/k8s/` (bonus).
+- **CI/CD:** no se configuró un pipeline de integración continua; las pruebas se corren localmente
+  antes de cada commit (`python -m pytest tests/ -v`). Queda como trabajo futuro (por ejemplo,
+  GitHub Actions que corra las 36 pruebas en cada *push*).
+- **Control de versiones:** repositorio Git con commits de ambos integrantes en las cinco fases y
+  etiqueta `v1.0` para la entrega.
+- **Uso de IA declarado:** en las fases 1 a 5 (v1) se usó Antigravity (Google DeepMind); en la
+  mejora v2 se usó Claude Code (Anthropic). El detalle por actividad y la revisión humana están en
+  la bitácora.
+
+---
+
+## 7. Diseño de interfaces
+
+Las cuatro vistas son plantillas Jinja2 servidas por la API en `http://localhost:8000` (inicio de
+sesión en `/login`). Los permisos se validan en la API, no en la pantalla.
+
+| Vista | Ruta | Usuario de prueba | Qué muestra |
+|---|---|---|---|
+| Paciente | `/paciente` | `paciente_carlos` | Su historia unificada de las 3 sedes, ordenada por fecha y con la sede (y su motor) de cada atención; botón para descargar su Bundle FHIR; lista de quién accedió a su historia y cuándo |
+| Admisionista | `/admision` | `admision_laura` | Búsqueda por documento que dice en qué sedes existe el paciente y si hay datos distintos entre sedes; formulario de registro / admisión con sede y triage (envía al HSB); monitor real de mensajes del bus desde `/hsb/mensajes`. No muestra diagnósticos |
+| Médico | `/medico` | `medico_mateo` | Historia unificada; formularios de diagnóstico CIE-10, fórmula (campos 25–32) y egreso (40–50). Cada escritura devuelve su sello |
+| Reporte de HC | `/reporte` | médico, auditor, paciente (solo el suyo) | Reporte agrupado por sede con aviso si una sede no respondió; tabla de los 57 campos con cobertura y faltantes; sello SHA-256 del contenido; imprimir y descargar Bundle; pestaña **Tablero** (`?pestana=tablero`) con nodos y motor, cobertura FHIR por sede, métricas del bus y verificación de la auditoría |
+
+**Capturas.** Tomadas el 2026-11-11 sobre la plataforma real desplegada en Kali Linux (Docker),
+con datos sintéticos, a 1440 px de ancho (Chrome). Archivos en `docs/capturas/`.
+
+![Figura 1. Inicio de sesión con usuarios de demostración](capturas/01_login.png)
+*Figura 1. Inicio de sesión: panel de la plataforma (3 sedes y sus motores, traductor de 57 campos, auditoría) y usuarios de demostración.*
+
+![Figura 2. Vista Paciente](capturas/02_paciente_historia.png)
+*Figura 2. Vista Paciente (1001): historia unificada de las 3 sedes en línea de tiempo con la sede y el motor de cada atención, descarga del Bundle FHIR y registro de quién accedió.*
+
+![Figura 3. Admisionista: búsqueda en las 3 sedes](capturas/03_admision_busqueda_1001.png)
+*Figura 3. Admisionista: el documento 1001 existe en las 3 sedes (PostgreSQL, MongoDB, PostgreSQL); datos de identificación sin diagnósticos.*
+
+![Figura 4. Admisionista: respuesta del bus](capturas/04_admision_respuesta_hsb.png)
+*Figura 4. Admisión de un paciente nuevo en la Sede 2: el HSB responde ENTREGADO, lista los recursos FHIR creados y el sello de auditoría; abajo, el monitor real de mensajes del bus con sus estados y motivos de rechazo.*
+
+![Figura 5. Médico: historia del paciente de 57 campos](capturas/05_medico_historia_1020.png)
+*Figura 5. Vista Médico con el paciente 1020 (mensaje HL7 de 57 campos) y los formularios de diagnóstico, fórmula y egreso.*
+
+![Figura 6. Médico: sello de una escritura](capturas/06_medico_sello_escritura.png)
+*Figura 6. Registro de un diagnóstico CIE-10 (A90): la escritura viaja por el HSB, queda en MongoDB y devuelve el sello SHA-256 del evento de auditoría.*
+
+![Figura 7. Reporte de HC completo](capturas/07_reporte_hc_1001.png)
+*Figura 7. Reporte de HC del paciente 1001 agrupado por sede, cobertura de los 57 campos con faltantes y sello de integridad.*
+
+![Figura 8. Reporte del paciente de 57 campos](capturas/08_reporte_57_campos_1020.png)
+*Figura 8. Reporte del paciente 1020: 56 de 57 campos diligenciados (solo falta el 42, diagnóstico de muerte, porque egresa vivo) y 100 % de los obligatorios.*
+
+![Figura 9. Tablero de estado](capturas/09_tablero_estado.png)
+*Figura 9. Tablero de estado: sedes activas con su motor, cobertura FHIR por sede, métricas del bus y verificador de auditoría ÍNTEGRA.*
+
+![Figura 10. Reporte incompleto con la Sede 2 caída](capturas/10_reporte_incompleto_sede2_caida.png)
+*Figura 10. Con `docker stop mongo_sede2` la vista sigue respondiendo con las sedes 1 y 3, marca la Sede 2 como no disponible y el reporte (y su sello) como INCOMPLETO.*
+
+![Figura 11. Tablero con la Sede 2 caída](capturas/11_tablero_sede2_caida.png)
+*Figura 11. Tablero durante la caída: 2 de 3 sedes activas y la Sede 2 (MongoDB) en DOWN.*
+
+![Figura 12. Auditoría alterada detectada](capturas/12_auditoria_alterada_detectada.png)
+*Figura 12. Tras un `UPDATE` manual en `evento_auditoria` (índice 3), el verificador pasa a ALERTA y señala el primer evento alterado.*
+
+![Figura 13. Acceso denegado](capturas/13_acceso_denegado_403.png)
+*Figura 13. La admisionista intenta abrir la vista del médico: 403 y el intento queda en la auditoría.*
+
+![Figura 14. Inicio de sesión en móvil, modo oscuro](capturas/14_login_movil_oscuro.png)
+*Figura 14. Diseño adaptable: inicio de sesión a 390 px con el tema oscuro del sistema.*
+
+**Accesibilidad.** Criterios aplicados y que se verifican sobre las plantillas finales: etiquetas
+`<label>` asociadas a cada campo de formulario, navegación completa con teclado, mensajes de estado
+(sello, rechazo, sede caída) en texto y no solo por color, y contraste suficiente entre texto y
+fondo.
+
+---
+
+## 8. Prototipo final y criterios de aceptación
+
+**Entorno de despliegue probado:** Kali Linux en VirtualBox, 3,8 GB de RAM, Docker 28 con Compose
+v2. Comando: `docker compose down -v && docker compose up -d --build`. Los puertos de PostgreSQL se
+pueden reasignar en `.env` si el anfitrión ya los usa.
+
+| Requisito | Criterio de aceptación | Estado | Evidencia |
+|---|---|---|---|
+| RF1 Ingesta | HL7 v2 y CSV (y JSON) de las 3 sedes | Cumplido | `/hsb/hl7`, `/hsb/csv?sede=N`, `/hsb/json?sede=N`; ejemplos 01–04 y mensaje de 57 campos |
+| RF2 FHIR R4 | Patient, Encounter, Observation, Condition (CIE-10) en Bundle | Cumplido | `fhir/normalizer.py`; Bundle de 1001 (26 recursos) con 0 errores en `$validate` |
+| RF3 HSB | Enrutamiento por sede, transformación, validación, reintentos, idempotencia | Cumplido | `hsb/`; prueba con HAPI apagado: entregado tras 7 intentos sin duplicar |
+| RF4 Datos distribuidos | Un nodo por sede y consulta unificada | Cumplido, con motores distintos | `pg_sede1`, `mongo_sede2`, `pg_sede3`; `db/consulta_unificada.py` |
+| RF5 Seguridad | Token, roles, auditoría encadenada | Cumplido (Fabric no) | `app/auth.py`, `app/rbac.py`, `app/audit.py`, `pg_central` |
+| RF6 Vistas | Paciente, Admisionista, Médico, Reporte de HC con tablero | Cumplido | `app/main.py`, `app/templates/` |
+| RNF Un comando | `docker compose up` levanta todo | Cumplido | HAPI tarda 85–95 s en responder |
+| RNF Sede caída | La vista sigue con las otras dos y marca la sede | Cumplido | `docker stop mongo_sede2` |
+| RNF Observabilidad | `/health` y `/metrics` en cada servicio | Cumplido en HSB y API | HAPI no tiene `/health` propio; su estado lo reportan HSB y API |
+
+---
+
+## 9. Viabilidad técnica
+
+| Aspecto | Implementado | Propuesto (no implementado) |
+|---|---|---|
+| Ingesta | Un HSB con cola en hilo de segundo plano y estado en las bases | Réplicas del HSB detrás de un balanceador y un broker (Kafka o RabbitMQ) particionado por sede |
+| Datos | 2 PostgreSQL y 1 MongoDB, cada uno un nodo único | Réplicas de lectura en PostgreSQL; *replica set* en MongoDB (transacciones multi-documento y conmutación por fallo); Citus si una sede crece a millones de atenciones |
+| FHIR | Una instancia de HAPI con su base embebida por defecto | HAPI respaldado por PostgreSQL y en más de una instancia |
+| Seguridad | JWT HS256 con usuarios de prueba en código | Proveedor de identidad (Keycloak/OIDC), TLS entre servicios y autenticación en los endpoints del HSB |
+| Auditoría | Cadena SHA-256 en `pg_central` | Anclaje periódico del último hash en Hyperledger Fabric (bonus no hecho) |
+| Despliegue | Docker Compose; manifiestos para Minikube en `infra/k8s/` | Autoescalado del HSB por tamaño de cola |
+
+**Qué escalar primero ante 100× más mensajes:** el HSB. Hoy entrega de forma síncrona el primer
+intento y tiene un solo hilo de reintentos por proceso. Lo primero sería poner un broker delante
+para responder `202` de inmediato y repartir el trabajo entre varias réplicas del HSB; luego HAPI
+(más instancias sobre PostgreSQL), y por último las bases de cada sede.
+
+**Cumplimiento.** Solo datos sintéticos (también los códigos REPS). Ley 1581 de 2012: el paciente ve
+quién accedió a su historia (finalidad y acceso); la auditoría encadenada impide reescribir sin
+dejar rastro; el admisionista no ve datos clínicos (mínimo privilegio). Resolución 866 de 2021: los
+57 campos están en el catálogo y se mide su cobertura.
+
+---
+
+## 10. Interoperabilidad basada en datos
+
+**Pilar técnico (demostrado).** Tres formatos de entrada (HL7 v2 en texto enviado por HTTP POST, CSV con `;`,
+JSON) y una salida estándar (FHIR R4 por REST, Bundle `transaction`). Las vistas y los legados no
+comparten base: todo pasa por el HSB y la API. Dos motores de base con modelos distintos se integran
+a través del registro canónico.
+
+**Pilar semántico (demostrado).** CIE-10 en Condition y LOINC en Observation; los textos locales del
+CSV se convierten a CIE-10 con `05_ref_terminologia.csv` y lo que no se puede mapear se rechaza con
+motivo. Los dominios de la Res. 866 (tipo de documento, entorno, vía de ingreso, triage, condición
+de salida…) se normalizan con tablas de sinónimos, de modo que `E` (HL7), `EMER` o `01` significan
+lo mismo.
+
+Ejemplo de un campo de punta a punta, el **14, municipio de residencia (DANE)**:
+
+| Paso | Representación |
+|---|---|
+| HL7 v2 | `PID-11.9` (noveno componente de la dirección), p. ej. `70001` |
+| Registro canónico | `usuario.municipio_residencia = "70001"` |
+| PostgreSQL (sedes 1 y 3) | `usuario.municipio_residencia VARCHAR(5)` |
+| MongoDB (sede 2) | `pacientes.residencia.municipio_dane` |
+| FHIR R4 | `Patient.address[0].district` |
+
+**Pilar organizacional (solo se menciona).** Acuerdos entre las IPS sobre los segmentos Z, los
+códigos locales y la gobernanza de la tabla de terminología; el gobierno de datos se evalúa en
+Arquitectura TI.
+
+---
+
+## 11. Resultados y discusión
+
+Mediciones en Kali Linux (VirtualBox, 3,8 GB de RAM, Docker 28) el 10 y 11 de noviembre de 2026.
+
+| Prueba | Resultado medido |
+|---|---|
+| Arranque limpio (`down -v && up -d --build`) | Todos los contenedores arriba; HAPI responde a los 85–95 s |
+| Cobertura FHIR antes de enviar mensajes | 0 % en las 3 sedes |
+| Ejemplo 01 (ADT^A01, sede 2 MongoDB) | Entregado |
+| Ejemplo 01 reenviado | `duplicado`; exactamente 1 Patient 1007 en HAPI y 1 documento en MongoDB |
+| Ejemplo 02 (ORU^R01, sede 1 PostgreSQL) | Entregado; Observation 718-7 = 13,8 g/dL |
+| Ejemplo 03 (inválido) | Rechazado con 3 motivos |
+| Ejemplo 04 (CSV, sede 3) | 3 entregados (1008, 1009, 1010) y 2 rechazados |
+| Mensaje HL7 de 57 campos (`tests/datos/06_adt_a03_57_campos_sede1.hl7`) | 11 recursos FHIR; 56 de 57 campos; 100 % de obligatorios. Falta solo el 42 (diagnóstico de muerte) porque el paciente sale vivo |
+| Cobertura FHIR por sede después de los ejemplos | Sede 1: 50 % → 67 % (tras el mensaje de 57 campos); sede 2: 33,3 %; sede 3: 75 % |
+| Consulta unificada del paciente 1001 (3 sedes, 2 motores) | 52 de 57 campos; 100 % de obligatorios |
+| Bundle de 1001 en HAPI `$validate` | 26 recursos; 0 errores, 33 advertencias, 46 mensajes informativos |
+| HAPI apagado al enviar un mensaje | Respuesta `reintentando`; 7 intentos con esperas de 2 a 64 s; entregado solo 129,5 s después del primer intento; sin duplicado |
+| `docker stop mongo_sede2` | La consulta responde con sedes 1 y 3, `reporte_completo = false`, `/health` DEGRADED 2/3; se recupera al iniciar el contenedor |
+| `UPDATE evento_auditoria SET usuario_sistema='intruso' WHERE indice = 3` | El verificador señala el índice 3: "Alteración de contenido" |
+| Paciente pide la historia de otro paciente | 403 y evento `ACCESO_DENEGADO` |
+| ACID en PostgreSQL (`db/demo_acid.sql`) | Violación de `CHECK` en `clasificacion_triage` → rollback completo |
+| Reinicio del bus con mensajes pendientes | Recuperó 2 mensajes pendientes y los entregó |
+| Pruebas automatizadas | 36 de 36 pasan |
+
+**Composición del lote de ejemplos oficiales.** Los ejemplos 01 (dos veces), 02, 03 y las 5 filas
+del CSV son 9 mensajes recibidos: 5 entregados, 1 duplicado y 3 rechazados. Los 3 rechazos
+(33 %) son los que el contrato de `ejemplos/LEEME.md` exige rechazar; ningún mensaje válido quedó
+MUERTO en el flujo normal.
+
+**Lo que no se midió.** No se midió de forma sistemática la latencia por mensaje entregado al primer
+intento ni los mensajes por minuto bajo carga. El HSB expone `latencia_media_ms`,
+`mensajes_ultimo_minuto` y `porcentaje_fallidos` en `/metrics`, pero son contadores en memoria de
+una sesión de demostración, no una prueba de carga; por eso no se reportan como resultado.
+
+**Discusión.**
+- La cobertura FHIR por sede **no llega al 100 %** porque se mide como pacientes con recurso en HAPI
+  sobre pacientes de la sede, y los pacientes sembrados como "legados" solo se enlazan cuando llega
+  un mensaje suyo. Falta un paso de migración que reenvíe por el bus a todos los pacientes
+  existentes (trabajo futuro).
+- La cobertura de campos muestra el límite de los datos y no del traductor: el mensaje completo
+  llega a 56/57; la historia real de 1001 llega a 52/57 porque sus atenciones no traen todos los
+  opcionales.
+- El reintento confirma que la idempotencia es lo que hace seguro repetir: 7 intentos, una sola
+  entrega, ningún duplicado, sin coordinación distribuida (2PC). Esto coincide con los patrones de
+  receptor idempotente y canal de mensajes muertos de Hohpe y Woolf (2003).
+- Las 33 advertencias de `$validate` vienen de que el proyecto usa extensiones y sistemas de códigos
+  propios (`minsalud.gov.co/...`) que HAPI no puede resolver; no son errores de estructura.
+
+---
+
+## 12. Conclusiones
+
+1. Se puede unificar la historia de tres sedes **sin reemplazar sus legados ni igualar sus
+   motores**: un registro canónico de 57 campos y un repositorio con una sola interfaz bastaron para
+   tratar PostgreSQL y MongoDB igual desde el bus y la consulta.
+2. Elegir disponibilidad en la lectura (AP) mantuvo la atención en marcha con una sede caída, a
+   cambio de un reporte marcado como incompleto.
+3. Ids deterministas, `PUT` en FHIR y UPSERT en las sedes hicieron idempotente la entrega; con eso,
+   los reintentos y la recuperación tras reinicio no necesitan transacción distribuida.
+4. Separar la auditoría en `pg_central` permitió apagar cualquier sede sin perder trazabilidad y
+   demostrar la detección de una alteración hecha directamente en la base.
+
+### Limitaciones
+
+- MongoDB corre sin *replica set*: sin transacciones multi-documento ni conmutación por fallo.
+  Además `guardar` lee el documento y lo reemplaza; dos escrituras simultáneas sobre el mismo
+  paciente podrían pisarse (no hay control de concurrencia optimista).
+- Una sola instancia de HAPI FHIR, con su base embebida por defecto.
+- Los segmentos Z (`ZPI`, `ZPV`, `ZRX`, `ZEG`) son una convención del proyecto, no un estándar
+  nacional.
+- Códigos REPS de prestador sintéticos; extensiones FHIR con URLs propias, no perfiles publicados.
+- Cobertura FHIR por sede sin paso de migración de los pacientes existentes.
+- Latencia y mensajes por minuto no medidos de forma sistemática.
+- Los endpoints del HSB (`:8001`) no exigen autenticación; solo la API la exige.
+- Usuarios de prueba definidos en código; secreto JWT de desarrollo si no se cambia en `.env`.
+
+### Trabajo futuro
+
+- *Replica set* de MongoDB y control de versión del documento para escrituras concurrentes.
+- Script de migración que pase a todos los pacientes legados por `/hsb/json` (cobertura FHIR 100 %).
+- Prueba de carga para medir latencia, mensajes por minuto y porcentaje de fallidos.
+- Keycloak/OIDC, TLS y autenticación en el HSB.
+- Anclaje de la cadena de auditoría en Hyperledger Fabric; Prometheus y Grafana.
+- Pipeline de CI que corra las 36 pruebas en cada *push*.
+
+---
+
+## Referencias (APA 7)
+
+Bender, D., & Sartipi, K. (2013). HL7 FHIR: An agile and RESTful approach to healthcare information exchange. En *Proceedings of the 26th IEEE International Symposium on Computer-Based Medical Systems* (pp. 326–331). IEEE. https://doi.org/10.1109/CBMS.2013.6627810
+
+Centro Nacional en Sistemas de Información en Salud. (2022). *Guía de interoperabilidad clínica con HL7 FHIR en redes asistenciales*. CENS.
+
+HAPI FHIR Community. (2024). *HAPI FHIR: The open source FHIR API for Java* (versión 7.2.0). Smile Digital Health. https://hapifhir.io
+
+<!-- verificar acceso: confirmar que el equipo abrió la especificación antes de entregar -->
+HL7 International. (2019). *FHIR Release 4 (v4.0.1)*. https://hl7.org/fhir/R4/
+
+Hohpe, G., & Woolf, B. (2003). *Enterprise integration patterns: Designing, building, and deploying messaging solutions*. Addison-Wesley.
+
+Ministerio de Salud de la Nación Argentina. (2020). *Estrategia nacional de salud digital: Guía de implementación del Perfil Argentino de FHIR*. Ministerio de Salud de la Nación.
+
+Ministerio de Salud y Protección Social. (2021). *Resolución 866 de 2021: Por la cual se reglamenta el conjunto de elementos de datos clínicos relevantes para la interoperabilidad de la historia clínica en el país*. MinSalud.
+
+NextGen Healthcare. (2023). *Mirth Connect integration engine technical reference guide*. NextGen Healthcare.
+
+OpenHIE Consortium. (2022). *Open Health Information Mediator (OpenHIM) architecture specification*. Jembi Health Systems.
+
+Tanenbaum, A. S., & Van Steen, M. (2017). *Distributed systems* (3.ª ed.). Maarten van Steen.
+
+---
+
+## Anexos
+
+### A. Código clave
+
+| Archivo | Qué contiene |
+|---|---|
+| `traductor/catalogo_57.py` | Catálogo de los 57 campos (HL7 / CSV / PostgreSQL / MongoDB / FHIR) |
+| `traductor/dominios.py` | Dominios y sinónimos |
+| `traductor/traductor.py` | Traducciones al y desde el registro canónico, derivados y cobertura |
+| `fhir/normalizer.py` | Registro canónico → Bundle FHIR R4 |
+| `hsb/ingesta.py`, `hsb/queue_manager.py`, `hsb/main.py` | Flujo del bus, cola de reintentos, endpoints |
+| `db/repositorio.py`, `db/consulta_unificada.py` | Repositorios PostgreSQL / MongoDB y consulta en paralelo |
+| `db/schema.sql`, `db/sede2/init-mongo.js`, `db/central/init.sql` | Esquemas y datos sintéticos |
+| `app/main.py`, `app/rbac.py`, `app/audit.py` | API, permisos, auditoría encadenada |
+
+### B. Pruebas
+
+- Automatizadas: `python -m pytest tests/ -v` (36 pruebas; ver §6).
+- En vivo: guion de demostración (`docs/guion_demostracion.md`) y guía de Kali
+  (`docs/guia_kali_linux.md`).
+- Mensaje de 57 campos: `tests/datos/06_adt_a03_57_campos_sede1.hl7`.
+
+### C. Documentos relacionados
+
+- Mapeo completo: [`mapeo_57_campos.md`](mapeo_57_campos.md)
+- Tabla de mapeo de la Fase 1: [`fase1/arquitectura/tabla_mapeo_campos.md`](fase1/arquitectura/tabla_mapeo_campos.md)
+- Bitácora y uso de IA: [`bitacora.md`](bitacora.md)

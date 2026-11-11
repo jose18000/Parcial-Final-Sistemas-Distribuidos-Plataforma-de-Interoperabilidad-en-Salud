@@ -1,0 +1,75 @@
+# Evidencia: /health y /metrics — 2026-11-11 00:22:05
+
+$ curl http://localhost:8001/health
+{
+    "status": "UP",
+    "servicio": "hsb",
+    "timestamp": 1794374525.4806452,
+    "dependencias": {
+        "hapi_fhir_r4": "UP",
+        "sedes": {
+            "sede_1": {
+                "motor": "postgresql",
+                "estado": "UP"
+            },
+            "sede_2": {
+                "motor": "mongodb",
+                "estado": "UP"
+            },
+            "sede_3": {
+                "motor": "postgresql",
+                "estado": "UP"
+            }
+        }
+    },
+    "cola_reintentos": 0
+}
+
+$ curl http://localhost:8000/health
+{
+    "status": "UP",
+    "servicio": "api_gateway",
+    "nodos_activos": "3/3",
+    "dependencias": {
+        "sedes": {
+            "sede_1": {
+                "motor": "postgresql",
+                "estado": "UP"
+            },
+            "sede_2": {
+                "motor": "mongodb",
+                "estado": "UP"
+            },
+            "sede_3": {
+                "motor": "postgresql",
+                "estado": "UP"
+            }
+        },
+        "hapi_fhir": "UP",
+        "hsb": "SALUDABLE",
+        "auditoria_central": "UP"
+    }
+}
+
+$ curl http://localhost:8001/metrics
+{
+    "total_recibidos": 166,
+    "total_entregados": 143,
+    "total_rechazados": 14,
+    "total_duplicados_detectados": 9,
+    "total_reintentos_ejecutados": 0,
+    "total_mensajes_muertos": 0,
+    "mensajes_ultimo_minuto": 7,
+    "latencia_media_ms": 369.87,
+    "porcentaje_fallidos": 8.92,
+    "estado_general": "SALUDABLE",
+    "mensajes_por_estado_persistidos": {
+        "RECHAZADO": 11,
+        "ENTREGADO": 143
+    },
+    "pendientes_en_cola_reintentos": 0,
+    "configuracion_reintentos": {
+        "max_intentos": 7,
+        "espera_base_s": 2.0
+    }
+}

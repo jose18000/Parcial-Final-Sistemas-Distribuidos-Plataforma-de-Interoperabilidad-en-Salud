@@ -11,6 +11,13 @@
 **Fecha:** Noviembre 2026  
 **Versión del informe:** Fase 1 de 5
 
+> **Actualización v2 (10–11 de noviembre de 2026).** Este informe corresponde a la entrega de la
+> Fase 1. Después cambió: la Sede 2 usa **MongoDB** (`mongo_sede2`) en lugar de PostgreSQL; el mapeo
+> cubre los **57 campos** de la Res. 866 de 2021 con un traductor universal (`traductor/`); los
+> cuatro diagramas, la arquitectura y la tabla de mapeo enlazados aquí ya están en su versión v2.
+> Detalle en la [bitácora](../bitacora.md) (Correcciones entre fases) y en el
+> [informe final](../informe_final_v7.md).
+
 ---
 
 ## 1. Resumen
@@ -89,7 +96,7 @@ Las transacciones que modifican los datos dentro de un mismo nodo de sede mantie
 
 ### 3.4 Fragmentación Horizontal
 
-La fragmentación horizontal divide una tabla en subconjuntos de filas según un criterio. En nuestra plataforma, la tabla `atencion` está fragmentada horizontalmente **por sede**: todas las atenciones de Sincelejo están en `pg_sede1`, las de Cartagena en `pg_sede2` y las de Corozal en `pg_sede3`. La clave de fragmentación (`sede_id`) coincide con el patrón de consulta más frecuente (el médico de una sede consulta primero los datos de su sede).
+La fragmentación horizontal divide una tabla en subconjuntos de filas según un criterio. En nuestra plataforma, la tabla `atencion` está fragmentada horizontalmente **por sede**: todas las atenciones de Sincelejo están en `pg_sede1`, las de Cartagena en `mongo_sede2` (MongoDB desde la v2) y las de Corozal en `pg_sede3`. La clave de fragmentación (`sede_id`) coincide con el patrón de consulta más frecuente (el médico de una sede consulta primero los datos de su sede).
 
 La consulta unificada requiere un **fan-out**: la API consulta los tres nodos en paralelo y unifica los resultados en memoria. Este patrón se conoce como *scatter-gather* o *query fan-out*.
 
@@ -143,36 +150,37 @@ Ambas terminologías son requeridas por FHIR R4: los `Condition` usan CIE-10 en 
 
 > *[A — Jose Canchila]*
 > Los diagramas completos (con fuente Mermaid editable) están en:
-> - [`diagramas/01_casos_uso.md`](../diagramas/01_casos_uso.md)
-> - [`diagramas/02_secuencia_hsb.md`](../diagramas/02_secuencia_hsb.md)
-> - [`diagramas/03_clases.md`](../diagramas/03_clases.md)
-> - [`diagramas/04_estados_mensaje.md`](../diagramas/04_estados_mensaje.md)
+> - [`diagramas/01_casos_uso.md`](diagramas/01_casos_uso.md)
+> - [`diagramas/02_secuencia_hsb.md`](diagramas/02_secuencia_hsb.md)
+> - [`diagramas/03_clases.md`](diagramas/03_clases.md)
+> - [`diagramas/04_estados_mensaje.md`](diagramas/04_estados_mensaje.md)
 
 ### Verificación de coherencia entre diagramas
 
 | Elemento | Casos de uso | Secuencia | Clases | Estados |
 |----------|-------------|-----------|--------|---------|
-| `SistemaSede` (actor) | UC14 | Participante | `Sede` | — |
-| `MensajeBus` | UC6 (estado) | Cola de reintentos | Clase completa | Ciclo completo |
-| `EventoAuditoria` | UC11 | Servicio Auditoría | Clase completa | Genera en cada transición |
-| `Diagnostico` | UC7 | NodoDB (INSERT) | Clase completa | — |
-| `BundleFHIR` | UC2, UC10 | HAPI FHIR | Clase completa | ENTREGADO |
-| Estado `RECHAZADO` | UC14 (resultado) | Camino de error | `MensajeBus.estado` | Transición explícita |
-| Estado `REINTENTANDO` | — | Loop de reintentos | `MensajeBus.intentos` | Transición explícita |
-| `Auditor` (actor) | UC11, UC12, UC13 | Servicio Auditoría | `UsuarioSistema` con `Rol=auditor` | Puede reencolar MUERTO |
+| `Sistema de sede` (actor) | UC14 | Participante que envía | `Sede` | Origen de RECIBIDO |
+| `MensajeBus` | UC6, UC15 | `mensaje_bus` de la sede | Clase completa | Los 7 estados |
+| `RegistroCanonico` / `Campo` | UC15 | Traductor 57 | Clases del traductor | — |
+| `RepositorioSede` (PostgreSQL / MongoDB) | UC15, UC7 | Repositorio de la sede | Clase abstracta y 2 implementaciones | ENTREGADO / REINTENTANDO / MUERTO |
+| `EventoAuditoria` | UC13, UC16, UC17 | Auditoría (`pg_central`) | Clase completa | — (la escribe la API, no el bus) |
+| `Diagnostico` | UC8 | Repositorio de la sede | Clase completa | — |
+| Estado `RECHAZADO` | UC15 (resultado) | Camino de error de validación | `MensajeBus.estado` | Transición explícita |
+| Estado `REINTENTANDO` | UC15 | Bucle de la cola de reintentos | `MensajeBus.intentos` | Transición explícita; reencolar desde MUERTO |
+| `Auditor` (actor) | UC11, UC12, UC13 | — | `UsuarioSistema` con `rol=auditor` | — |
 
 ---
 
 ## 5. Arquitectura y Justificación
 
-> Ver documento completo: [`arquitectura/arquitectura_y_justificacion.md`](../arquitectura/arquitectura_y_justificacion.md)
+> Ver documento completo: [`arquitectura/arquitectura_y_justificacion.md`](arquitectura/arquitectura_y_justificacion.md)
 
 ---
 
 ## 6. Tabla de Mapeo de Campos
 
-> Ver documento completo: [`arquitectura/tabla_mapeo_campos.md`](../arquitectura/tabla_mapeo_campos.md)
-> Total: 22 campos mapeados (mínimo exigido: 15 ✓)
+> Ver documento completo: [`arquitectura/tabla_mapeo_campos.md`](arquitectura/tabla_mapeo_campos.md)
+> v2: 24 filas representativas (mínimo exigido: 15 ✓); los 57 campos completos en [`mapeo_57_campos.md`](../mapeo_57_campos.md)
 
 ---
 
@@ -237,7 +245,7 @@ Lo que el sistema garantiza:
 | ☑ Diagrama UML: Estados del Mensaje (Mermaid + análisis) | Completo | `diagramas/04_estados_mensaje.md` |
 | ☑ Diagrama de Arquitectura (Mermaid) | Completo | `arquitectura/arquitectura_y_justificacion.md` |
 | ☑ Tabla de justificación de componentes | Completo | `arquitectura/arquitectura_y_justificacion.md` |
-| ☑ Tabla de mapeo ≥15 campos | Completo (22 campos) | `arquitectura/tabla_mapeo_campos.md` |
+| ☑ Tabla de mapeo ≥15 campos | Completo (v2: 24 filas + 57 campos generados) | `arquitectura/tabla_mapeo_campos.md` |
 | ☑ Estructura base del repositorio | Completo | Raíz del repo |
 | ⬜ Commit de A (Jose Canchila) | Pendiente — ver instrucciones abajo | Git |
 | ⬜ Commit de B (Sharit Manjarrez) | Pendiente — ver instrucciones abajo | Git |

@@ -1,0 +1,93 @@
+# Evidencia: contrato de los ejemplos oficiales (reenvío) — 2026-11-11 00:21:56
+
+$ curl -X POST --data-binary @ejemplos/01_adt_a01_valido_sede2.hl7 http://localhost:8001/hsb/hl7
+{
+    "estado": "duplicado",
+    "mensaje_id": "MSG-0001",
+    "estado_original": "ENTREGADO",
+    "bundle_id": "bundle-pac-1007",
+    "motivo": "Mensaje recibido previamente: no se vuelve a crear el paciente ni la atención."
+}
+
+$ curl -X POST --data-binary @ejemplos/03_adt_a01_invalido.hl7 http://localhost:8001/hsb/hl7
+{
+    "estado": "rechazado",
+    "mensaje_id": "MSG-0003",
+    "total_motivos": 3,
+    "motivos": [
+        "documento no numérico",
+        "sexo no válido ('X'): debe ser M, F u O",
+        "diagnóstico sin mapeo a CIE-10"
+    ]
+}
+
+$ curl -X POST --data-binary @ejemplos/04_sede3_legado.csv 'http://localhost:8001/hsb/csv?sede=3'
+{
+    "estado": "procesado",
+    "sede": 3,
+    "total_filas": 5,
+    "total_entregados": 0,
+    "total_rechazados": 2,
+    "total_duplicados": 3,
+    "total_reintentando": 0,
+    "total_muertos": 0,
+    "entregados": [],
+    "rechazados": [
+        {
+            "fila": 4,
+            "documento": "1011",
+            "mensaje_id": "CSV-S3-4f69d37623e6",
+            "motivos": [
+                "diagnóstico sin mapeo a CIE-10: 'DOLOR MISTERIOSO'"
+            ]
+        },
+        {
+            "fila": 5,
+            "documento": "12",
+            "mensaje_id": "CSV-S3-d8dc7161f6e5",
+            "motivos": [
+                "documento fuera de rango: tiene 2 dígitos (debe tener entre 4 y 15 dígitos)"
+            ]
+        }
+    ],
+    "duplicados": [
+        {
+            "fila": 1,
+            "documento": "1008",
+            "mensaje_id": "CSV-S3-b276c3b7a647",
+            "bundle_id": "bundle-pac-1008"
+        },
+        {
+            "fila": 2,
+            "documento": "1009",
+            "mensaje_id": "CSV-S3-0716112c2761",
+            "bundle_id": "bundle-pac-1009"
+        },
+        {
+            "fila": 3,
+            "documento": "1010",
+            "mensaje_id": "CSV-S3-ed654de66ca3",
+            "bundle_id": "bundle-pac-1010"
+        }
+    ],
+    "reintentando": [],
+    "muertos": []
+}
+
+# Pacientes 1007 en HAPI (debe ser 1 aunque el mensaje se envió varias veces)
+{
+    "resourceType": "Bundle",
+    "id": "d102a59c-7823-41c1-8071-073d07f93160",
+    "meta": {
+        "lastUpdated": "2026-11-11T05:21:57.129+00:00",
+        "tag": [
+            {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationValue",
+                "code": "SUBSETTED",
+                "display": "Resource encoded in summary mode"
+            }
+        ]
+    },
+    "type": "searchset",
+    "total": 1
+}

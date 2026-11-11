@@ -9,6 +9,13 @@
 **Fecha:** Noviembre 2026  
 **Versión del informe:** Fase 4 de 5 (Ponderación: 1,00 / 5,0)
 
+> **Actualización v2 (10–11 de noviembre de 2026).** Corrección registrada en la bitácora: la
+> auditoría vivía solo en memoria, no había tabla que alterar a mano y se perdía al reiniciar. Desde la
+> v2 la cadena está en `pg_central.evento_auditoria` y el hash cubre todos los campos; la sede que se
+> apaga en la prueba de caída es `mongo_sede2` (MongoDB); las escrituras del médico viajan al HSB y
+> devuelven su sello. Las líneas afectadas abajo están actualizadas. Ver el
+> [informe final](../informe_final_v7.md).
+
 ---
 
 ## 1. Autenticación y Matriz de Permisos (RBAC)
@@ -21,10 +28,10 @@ Se implementó autenticación mediante tokens **JWT firmados con HMAC-SHA256 (HS
 |--------------------|:--------:|:------------:|:------:|:-------:|---------------------|
 | **Ver su propia historia** | **Sí** | No | No | No | `GET /api/pacientes/{doc}/historia` (doc coincide con token) |
 | **Ver la historia de otro paciente** | **No (403)** | **No (403)** | **Sí** | **Sí (reporte)** | `validar_acceso_historia_clinica()` |
-| **Abrir una atención con triage** | **No (403)** | **Sí** | **No (403)** | **No (403)** | `POST /admision/abrir-atencion` |
-| **Registrar diagnóstico o egreso** | **No (403)** | **No (403)** | **Sí** | **No (403)** | `POST /medico/registrar-evolucion` |
+| **Abrir una atención con triage** | **No (403)** | **Sí** | **No (403)** | **No (403)** | `POST /admision/registrar` |
+| **Registrar diagnóstico, fórmula o egreso** | **No (403)** | **No (403)** | **Sí** | **No (403)** | `POST /medico/diagnostico`, `/medico/formula`, `/medico/egreso` |
 | **Ver el estado de la plataforma** | **No (403)** | **No (403)** | **Sí** | **Sí** | `GET /reporte` y `GET /metrics` |
-| **Apagar / encender un nodo (demo)**| **No (403)** | **No (403)** | **No (403)**| **Sí** | `POST /api/auditoria/alterar-prueba` |
+| **Simular alteración de la auditoría (demo)**| **No (403)** | **No (403)** | **No (403)**| **Sí** | `POST /api/auditoria/alterar-prueba` |
 
 > **Comportamiento ante Acceso Denegado:** Si un usuario sin privilegios intenta invocar una acción no autorizada (por ejemplo, un admisionista intentando leer diagnósticos o un paciente cambiando el documento en la URL), la API responde inmediatamente con **HTTP 403 Forbidden** y registra un evento criptográfico de tipo `ACCESO_DENEGADO` en la cadena de auditoría inmutable.
 
@@ -34,7 +41,9 @@ Se implementó autenticación mediante tokens **JWT firmados con HMAC-SHA256 (HS
 
 Para asegurar la trazabilidad y la no repudición de las acciones clínicas y de administración, se implementó una **cadena criptográfica secuencial de bloques** (`app/audit.py`), inspirada en la arquitectura de un libro contable distribuido pero optimizada para ejecución relacional ligera:
 
-$$\text{hash\_propio} = \text{SHA-256}(\text{hash\_anterior} \parallel \text{timestamp} \parallel \text{usuario} \parallel \text{tipo\_evento} \parallel \text{resultado} \parallel \text{detalle\_json})$$
+$$\text{hash\_propio} = \text{SHA-256}(\text{hash\_anterior} \parallel \text{indice} \parallel \text{timestamp} \parallel \text{usuario} \parallel \text{rol} \parallel \text{tipo\_evento} \parallel \text{recurso} \parallel \text{resultado} \parallel \text{detalle\_json})$$
+
+**v2:** la cadena se persiste en la tabla `evento_auditoria` de la base central `pg_central` (antes vivía solo en memoria) y cada inserción toma `pg_advisory_xact_lock` para que la cadena no se bifurque.
 
 ### 2.1 Propiedades de la Cadena
 1. **Bloque Génesis:** El sistema arranca con un hash génesis fijo de 64 ceros.
@@ -45,7 +54,7 @@ $$\text{hash\_propio} = \text{SHA-256}(\text{hash\_anterior} \parallel \text{tim
 Se desarrolló la función `verificar_cadena_auditoria()` que recorre secuencialmente todos los eventos desde el génesis hasta el último:
 - **Prueba Normal:** Cadena íntegra $\to$ Responde `cadena_integra: true` con 0 fallos detectados.
 - **Demostración de Adulteración en Vivo:**
-  1. Se invoca `POST /api/auditoria/alterar-prueba` (o se modifica a mano un campo en la base de datos).
+  1. Se invoca `POST /api/auditoria/alterar-prueba` o, como pide la guía, se modifica a mano una fila: `docker exec -it pg_central psql -U clinica_user -d clinica_central -c "UPDATE evento_auditoria SET usuario_sistema='intruso' WHERE indice = 3"`.
   2. El verificador detecta la discrepancia inmediatamente y devuelve:
      ```json
      {
@@ -53,7 +62,7 @@ Se desarrolló la función `verificar_cadena_auditoria()` que recorre secuencial
        "primer_evento_alterado": {
          "evento_id": "c71a39f0-21a4-4f0b-9dfb-088f11d1981a",
          "indice": 0,
-         "motivo": "Alteración de contenido: el hash_propio no corresponde con los datos del bloque",
+         "motivo": "Alteración de contenido: el hash_propio no corresponde con los datos del evento",
          "hash_propio_almacenado": "d8e3c4...",
          "hash_recalculado": "1a2b3c...",
          "usuario": "atacante_adulterado"
@@ -69,32 +78,32 @@ Se desarrolló la función `verificar_cadena_auditoria()` que recorre secuencial
 El principio de diseño adoptado (modelo AP del teorema CAP) se comprueba de forma práctica ante la caída intencional de un nodo de datos:
 
 ```bash
-# 1. Detener el contenedor de la Sede 2 (Cartagena)
-docker stop pg_sede2
+# 1. Detener el contenedor de la Sede 2 (Cartagena; MongoDB desde la v2)
+docker stop mongo_sede2
 
 # 2. Consultar la historia del paciente 1001 (que tiene atenciones en las 3 sedes)
 curl -s http://localhost:8000/api/pacientes/1001/historia
 ```
 
 ### Comportamiento Verificado del Sistema:
-1. **La API NO falla con error 500:** El Gateway detecta el fallo de socket (`timeout` o `connection refused`) en `pg_sede2` de forma no bloqueante.
+1. **La API NO falla con error 500:** El Gateway detecta el fallo de conexión (timeout de 3 s) en `mongo_sede2` sin bloquear a las otras sedes, que se consultan en paralelo.
 2. **Respuesta Parcial con Transparencia:** La API responde con `HTTP 200 OK`, retornando las atenciones de Sincelejo (Sede 1) y Corozal (Sede 3).
 3. **Señalización Explícita de Incompletitud:**
    - `reporte_completo: false`
    - `sedes_disponibles: [1, 3]`
-   - `sedes_no_disponibles: [{"sede_id": 2, "nombre": "Sede 2 - Cartagena", "motivo": "conexión rechazada"}]`
+   - `sedes_no_disponibles: [{"sede_id": 2, "nombre": "Sede 2 - Cartagena", "motor": "mongodb", "motivo": "..."}]`
    - Advertencia visible en la vista web: *"⚠️ ATENCIÓN: Sede 2 no disponible. La historia clínica presentada puede estar fraccionada."*
 4. **Bundle FHIR con Tag de Incompletitud:** Al descargar el Bundle FHIR R4 durante la caída, se inyecta automáticamente el metadato:
    ```json
    "meta": {
      "tag": [{
-       "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationValue",
-       "code": "incomplete",
-       "display": "Historial clínico incompleto por caída de sede"
+       "system": "https://clinica.local/fhir/tags",
+       "code": "incompleto",
+       "display": "Atención: 1 sede(s) no respondieron (Sede 2 - Cartagena). La historia puede estar incompleta."
      }]
    }
    ```
-5. **Recuperación Automática:** Al ejecutar `docker start pg_sede2`, el siguiente refresco de la vista incorpora inmediatamente las atenciones de Cartagena y marca el reporte como completo (3/3 sedes).
+5. **Recuperación Automática:** Al ejecutar `docker start mongo_sede2`, el siguiente refresco de la vista incorpora inmediatamente las atenciones de Cartagena y marca el reporte como completo (3/3 sedes).
 
 ---
 
@@ -102,12 +111,12 @@ curl -s http://localhost:8000/api/pacientes/1001/historia
 
 Cada componente de la plataforma expone telemetría estandarizada:
 - **API Gateway (`:8000`):** `GET /health` (estado de sedes y dependencias) y `GET /metrics` (auditoría y usuarios).
-- **HSB (`:8001`):** `GET /health` (HAPI + Postgres) y `GET /metrics` (latencia media en ms, tasa de fallos, duplicados detectados y mensajes por estado).
+- **HSB (`:8001`):** `GET /health` (HAPI + las 3 sedes, con su motor) y `GET /metrics` (latencia media en ms, tasa de fallos, duplicados detectados y mensajes por estado).
 - **HAPI FHIR (`:8090`):** `GET /fhir/metadata` (CapabilityStatement R4 4.0.1).
 
 ### Tablero de Estado Integrado en el Reporte de HC:
 El tablero consolida 4 cuadrantes esenciales:
-1. **Disponibilidad de Nodos:** Indicador visual en verde/rojo de los 3 nodos PostgreSQL.
+1. **Disponibilidad de Nodos:** Indicador visual en verde/rojo de los 3 nodos (v2: dos PostgreSQL y un MongoDB, con su motor).
 2. **Cobertura FHIR por Sede (%):** Mide el avance de migración legado $\to$ FHIR (pacientes con `fhir_patient_id` no nulo).
 3. **Rendimiento del Bus:** Latencia media en milisegundos y contador de reintentos.
 4. **Verificador Criptográfico:** Diagnóstico en tiempo real de la integridad de la cadena de hash.
@@ -120,10 +129,10 @@ El tablero consolida 4 cuadrantes esenciales:
 
 | Dimensión | Estado Actual (Implementado) | Propuesta para Producción a Gran Escala |
 |-----------|------------------------------|------------------------------------------|
-| **Capa de Ingesta (HSB)** | Contenedor único en FastAPI con colas en PostgreSQL y reintentos en memoria. | Múltiples réplicas sin estado (*stateless*) del HSB balanceadas por NGINX / Envoy; migración de colas locales hacia un clúster distribuido de **Apache Kafka** o **RabbitMQ** particionado por `sede_id`. |
-| **Capa de Almacenamiento** | 3 instancias PostgreSQL independientes (1 por sede). | Clúster de PostgreSQL con réplicas de sólo lectura (*Read Replicas*) por sede y balanceo de consultas *scatter-gather* con pgpool-II; sharding horizontal con **Citus** si el volumen supera millones de pacientes por sede. |
+| **Capa de Ingesta (HSB)** | Contenedor único en FastAPI; estado de la cola en `mensaje_bus` de cada sede y reintentos en un hilo en segundo plano (v2). | Múltiples réplicas sin estado (*stateless*) del HSB balanceadas por NGINX / Envoy; migración de colas locales hacia un clúster distribuido de **Apache Kafka** o **RabbitMQ** particionado por `sede_id`. |
+| **Capa de Almacenamiento** | 3 nodos independientes (1 por sede; v2: 2 PostgreSQL y 1 MongoDB sin *replica set*) y `pg_central` para auditoría. | Clúster de PostgreSQL con réplicas de sólo lectura (*Read Replicas*) por sede y balanceo de consultas *scatter-gather* con pgpool-II; sharding horizontal con **Citus** si el volumen supera millones de pacientes por sede. |
 | **Capa de Consulta (API)** | Gateway FastAPI con *fan-out* concurrente. | Despliegue en Kubernetes con *Horizontal Pod Autoscaler* (HPA) basado en métricas de CPU y latencia HTTP. |
-| **Capa FHIR (HAPI)** | Servidor standalone HAPI FHIR R4 con base Derby en memoria/disco. | HAPI FHIR respaldado por clúster PostgreSQL de alta disponibilidad y caché distribuida **Redis** para indización de búsquedas frecuentes por `Patient.identifier`. |
+| **Capa FHIR (HAPI)** | Servidor standalone HAPI FHIR R4 con la base embebida por defecto de la imagen. | HAPI FHIR respaldado por clúster PostgreSQL de alta disponibilidad y caché distribuida **Redis** para indización de búsquedas frecuentes por `Patient.identifier`. |
 
 ### 5.2 Cumplimiento Normativo (Ley 1581 de 2012 y Estándares de Salud)
 
@@ -142,7 +151,7 @@ El tablero consolida 4 cuadrantes esenciales:
 ## 6. Diseño de Interfaces y Accesibilidad (WCAG 2.1)
 
 Se diseñaron 4 vistas principales y el tablero de control cumpliendo lineamientos de accesibilidad web:
-1. **Contraste de Color:** Ratios de contraste superiores a 4.5:1 entre texto y fondo (botones `#0056b3` sobre blanco ratio 7.2:1; badges con combinaciones fondo claro y texto oscuro de alto contraste).
+1. **Contraste de Color:** Ratios de contraste superiores a 4.5:1 entre texto y fondo (valores de las plantillas de la v1; las plantillas de `app/templates/` se rediseñaron para la entrega final y el contraste se verifica sobre ellas).
 2. **Etiquetas y Formularios Semánticos:** Todos los campos de entrada cuentan con su respectivo elemento `<label for="...">` explícito, optimizado para lectores de pantalla.
 3. **Navegación por Teclado:** Foco visual evidente (`outline: 2px solid`) en todos los enlaces, botones e inputs; orden de tabulación lógico.
 4. **Modo Imprimible:** La vista de Reporte de HC cuenta con estilos `@media print` que ocultan menús y botones, dejando únicamente el reporte médico formal.
@@ -156,7 +165,7 @@ Se diseñaron 4 vistas principales y el tablero de control cumpliendo lineamient
 **Respuesta Arquitectural:**
 
 1. **Capa donde se detiene:**
-   El intento es interceptado y detenido en la **Capa de Control de Acceso (Middleware RBAC del API Gateway)** en el servidor backend, mediante la función `validar_acceso_historia_clinica()` antes de emitir cualquier consulta SQL a las bases de datos de las sedes.
+   El intento es interceptado y detenido en la **Capa de Control de Acceso (Middleware RBAC del API Gateway)** en el servidor backend, mediante la función `validar_acceso_historia_clinica()` antes de consultar las bases de las sedes.
 
 2. **Mecanismo de Detección:**
    El middleware inspecciona el token JWT criptográficamente firmado que viaja en la petición. El token contiene el claim inalterable `documento_id: "1001"` y el claim `rol: "paciente"`.

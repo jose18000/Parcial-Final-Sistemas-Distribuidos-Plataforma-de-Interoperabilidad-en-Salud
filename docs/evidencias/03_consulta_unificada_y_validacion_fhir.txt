@@ -1,0 +1,15 @@
+# Evidencia: consulta unificada del paciente 1001 en las 3 sedes (2 motores) — 2026-11-11 00:21:57
+reporte_completo: True
+sedes_con_registros: [1, 2, 3]
+  sede 1 postgresql disponible=True latencia=74.8 ms
+  sede 2 mongodb    disponible=True latencia=83.6 ms
+  sede 3 postgresql disponible=True latencia=37.9 ms
+  atención V-S1-0150    postgresql 2026-11-07T11:00:00  dx=['I10:EGRESO', 'I10:INGRESO', 'R51:RELACIONADO']
+  atención V-S2-0080    mongodb    2026-08-20T14:00:00  dx=['J45.9:INGRESO', 'J45.9:EGRESO']
+  atención V-S3-0045    postgresql 2026-05-10T18:30:00  dx=['A09:EGRESO', 'A09:INGRESO']
+cobertura 57 campos: 52 / 57 · 91.2 % · obligatorios 100.0 %
+
+# Validación del Bundle FHIR del paciente 1001 contra HAPI ($validate)
+recursos en el Bundle: 26 {'Organization': 3, 'Practitioner': 3, 'Patient': 1, 'Encounter': 3, 'Condition': 7, 'Observation': 5, 'MedicationRequest': 3, 'AllergyIntolerance': 1}
+OperationOutcome: {'warning': 33, 'information': 46}
+errores: 0
